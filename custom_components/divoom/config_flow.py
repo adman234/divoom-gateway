@@ -26,6 +26,7 @@ from homeassistant.helpers.selector import (
 
 from homeassistant.const import CONF_NAME, CONF_HOST, CONF_MAC, CONF_PORT
 from .const import CONF_DEVICE_TYPE, CONF_MEDIA_DIR, CONF_MEDIA_DIR_DEFAULT, CONF_ESCAPE_PAYLOAD, DOMAIN  # pylint:disable=unused-import
+from .hub import clean_host
 
 _LOGGER = logging.getLogger(__package__)
 
@@ -83,7 +84,7 @@ class DivoomBluetoothConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             )
         
         if CONF_HOST in user_input and user_input[CONF_HOST] != "":
-            self._device_host = user_input[CONF_HOST]
+            self._device_host = clean_host(user_input[CONF_HOST])
 
         if CONF_MAC in user_input:
             if user_input[CONF_MAC] in self._discovered_devices:
@@ -151,7 +152,7 @@ class DivoomBluetoothConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if CONF_PORT in user_input:
                 self._device_port = user_input[CONF_PORT]
             if CONF_HOST in user_input:
-                self._device_host = user_input[CONF_HOST] or None
+                self._device_host = clean_host(user_input[CONF_HOST])
 
             return await self.async_step_device_type()
 

@@ -135,6 +135,16 @@ Besides TCP (port 7777, used by the integration), the gateway also accepts comma
 one connection). If it connects but drops on the first command, you picked the wrong port — try `2`
 (audio devices) or `4` (Timebox Mini).
 
+**Wrong MAC: use the `-Audio` one** — Many Divoom devices advertise two Bluetooth personalities, e.g.
+`DitooPro-Light` (BLE, what Home Assistant's own Bluetooth sees) and `DitooPro-Audio` (Bluetooth Classic).
+The gateway can only connect to the **`-Audio`** MAC — it's the one shown under "Divoom devices found" on
+the gateway's web page. If your config entry was created from HA's `-Light` discovery, delete it and re-add
+with the `-Audio` MAC.
+
+**Gateway host format** — Enter just the hostname or IP (e.g. `192.168.50.57`), not a URL. The integration
+sanitizes `http://…/` automatically since v2.0.3, but older entries with a URL in the host field should be
+re-added.
+
 **GIF doesn't display** — The image must exactly match the screen size (16×16/32×32), be non-interlaced
 and use a global color palette. GIMP: export with the animation box checked and interlace unchecked, resize
 with no interpolation. Details in [this comment](https://github.com/d03n3rfr1tz3/hass-divoom/issues/19#issuecomment-1982059358).

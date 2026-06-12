@@ -8,8 +8,22 @@ from homeassistant.exceptions import HomeAssistantError
 _LOGGER = logging.getLogger(__package__)
 
 
+def clean_host(value):
+    """Normalize a user-entered gateway host: strip scheme, path and whitespace."""
+    if not value:
+        return None
+    value = value.strip()
+    if "://" in value:
+        value = value.split("://", 1)[1]
+    value = value.strip("/")
+    if "/" in value:
+        value = value.split("/", 1)[0]
+    return value or None
+
+
 def create_device(device_type, host, mac, port, escape_payload, logger=None):
     """Create the protocol implementation for the given device type."""
+    host = clean_host(host)
     if logger is None:
         logger = _LOGGER
 
@@ -61,7 +75,7 @@ class DivoomHub:
         self.hass = hass
         self.name = name
         self.mac = mac
-        self.host = host
+        self.host = clean_host(host)
         self.device_type = device_type
         self.media_directory = media_directory
         self.font_directory = font_directory

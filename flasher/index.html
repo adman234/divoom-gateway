@@ -57,8 +57,11 @@ settings, or update the firmware later.</p>
 </section>
 
 <footer>
-<a href="https://github.com/adman234/divoom-gateway">Source on GitHub</a> &middot; MIT licensed
+<a href="https://github.com/adman234/divoom-gateway">Source on GitHub</a> &middot; MIT licensed &middot; <span id="fw-version"></span>
 </footer>
+<script>
+fetch('firmware.manifest.json').then(r=>r.json()).then(j=>{document.getElementById('fw-version').textContent='firmware v'+j.version});
+</script>
 </main>
 </body>
 </html>

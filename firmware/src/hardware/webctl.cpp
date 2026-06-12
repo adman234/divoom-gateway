@@ -39,6 +39,7 @@ button.secondary{background:#3c4043;color:#e8eaed}
 .ok{color:#81c995}.bad{color:#f28b82}
 .note{font-size:.8em;color:#9aa0a6;margin-top:8px}
 .warn{background:#2a2218;border-left:4px solid #fdd663;padding:8px 12px;border-radius:8px;font-size:.8em;margin-top:10px}
+footer{color:#9aa0a6;font-size:.8em;text-align:center;margin:20px 0}
 #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#8ab4f8;color:#111418;padding:10px 20px;border-radius:8px;font-weight:600;display:none}
 </style>
 </head>
@@ -112,6 +113,8 @@ button.secondary{background:#3c4043;color:#e8eaed}
 <button class="danger" onclick="if(confirm('Erase all settings?'))post('/api/reset')">Factory reset</button>
 <p class="warn">&#9888;&#65039; Factory reset is untested. It erases all settings (incl. WiFi) and the gateway reopens its setup access point. If it does not come back, re-flash via USB.</p>
 </section>
+
+<footer>Divoom Gateway <span id="f-version"></span> &middot; <a href="https://github.com/adman234/divoom-gateway" style="color:#8ab4f8">GitHub</a></footer>
 </main>
 <div id="toast"></div>
 <script>
@@ -121,6 +124,7 @@ function post(u){fetch(u,{method:'POST'}).then(()=>toast('OK, restarting...'))}
 function fmtUp(s){const d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60);return (d?d+'d ':'')+h+'h '+m+'m'}
 function refresh(){fetch('/api/status').then(r=>r.json()).then(j=>{
 $('version').textContent='v'+j.version;
+$('f-version').textContent='v'+j.version;
 $('s-wifi').innerHTML=j.wifi.connected?'<span class="ok">'+j.wifi.ssid+' ('+j.wifi.rssi+' dBm)</span>':(j.wifi.ap?'<span class="bad">access point mode</span>':'<span class="bad">disconnected</span>');
 $('s-ip').textContent=j.wifi.ip;
 $('s-bt').innerHTML=j.bluetooth.connected?'<span class="ok">connected</span>':'<span>not connected</span>';
