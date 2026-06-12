@@ -310,6 +310,24 @@ show_sleep:
           step: 0.1
           mode: box
 
+show_temperature:
+  name: Show temperature
+  description: Shows the temperature channel (mainly Aurabox/Timebox Mini; uses the clock channel on other devices).
+  target:
+    entity:
+      integration: divoom
+  fields:
+    fahrenheit:
+      name: Fahrenheit
+      description: Show °F instead of °C.
+      default: false
+      selector:
+        boolean:
+    color:
+      name: Color
+      selector:
+        color_rgb:
+
 show_equalizer:
   name: Show equalizer
   description: Shows the music equalizer (Ditoo Mic only).

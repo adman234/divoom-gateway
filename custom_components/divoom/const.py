@@ -46,3 +46,14 @@ CHANNEL_EFFECTS: Final = "effects"
 CHANNEL_VISUALIZATION: Final = "visualization"
 CHANNEL_DESIGN: Final = "design"
 CHANNEL_LYRICS: Final = "lyrics"
+
+# clock styles selectable through the clock style select entity
+CLOCK_STYLES: Final = {
+    "Fullscreen": 0,
+    "Rainbow": 1,
+    "Boxed": 2,
+    "Analog square": 3,
+    "Fullscreen negative": 4,
+    "Analog round": 5,
+    "Widescreen": 6,
+}

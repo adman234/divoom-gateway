@@ -15,6 +15,7 @@ from .const import (
     CHANNEL_LIGHT,
     CHANNEL_LYRICS,
     CHANNEL_VISUALIZATION,
+    CLOCK_STYLES,
     DEVICE_CAPABILITIES,
     DOMAIN,
 )
@@ -29,9 +30,9 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up the Divoom channel select from a config entry."""
+    """Set up the Divoom selects from a config entry."""
     hub: DivoomHub = hass.data[DOMAIN]["hubs"][entry.entry_id]
-    async_add_entities([DivoomChannelSelect(hub)])
+    async_add_entities([DivoomChannelSelect(hub), DivoomClockStyleSelect(hub)])
 
 
 class DivoomChannelSelect(DivoomEntity, SelectEntity):
@@ -66,5 +67,24 @@ class DivoomChannelSelect(DivoomEntity, SelectEntity):
         elif option == CHANNEL_LYRICS:
             await self._hub.async_execute("show_lyrics")
 
+        self._attr_current_option = option
+        self.async_write_ha_state()
+
+
+class DivoomClockStyleSelect(DivoomEntity, SelectEntity):
+    """Switches the clock channel to one of the preset styles. Optimistic state."""
+
+    _attr_name = "Clock style"
+    _attr_assumed_state = True
+    _attr_icon = "mdi:clock-digital"
+
+    def __init__(self, hub: DivoomHub) -> None:
+        super().__init__(hub)
+        self._attr_unique_id = f"{hub.mac}-clock-style"
+        self._attr_options = list(CLOCK_STYLES)
+        self._attr_current_option = None
+
+    async def async_select_option(self, option: str) -> None:
+        await self._hub.async_execute("show_clock", clock=CLOCK_STYLES.get(option, 0))
         self._attr_current_option = option
         self.async_write_ha_state()

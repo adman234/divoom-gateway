@@ -172,6 +172,14 @@ def async_setup_services(hass: HomeAssistant) -> None:
     async def set_datetime(call: ServiceCall) -> None:
         await _run(call, "send_datetime", value=call.data.get("datetime"))
 
+    async def show_temperature(call: ServiceCall) -> None:
+        color = call.data.get("color")
+        await _run(
+            call, "show_temperature",
+            value=1 if call.data.get("fahrenheit") else 0,
+            color=list(color) if color else None,
+        )
+
     async def set_weather(call: ServiceCall) -> None:
         weather = call.data.get("weather")
         if isinstance(weather, str) and not weather.isdigit():
@@ -221,6 +229,7 @@ def async_setup_services(hass: HomeAssistant) -> None:
         "show_noise": show_noise,
         "show_radio": show_radio,
         "show_sleep": show_sleep,
+        "show_temperature": show_temperature,
         "show_equalizer": show_equalizer,
         "play_game": play_game,
         "game_control": game_control,
