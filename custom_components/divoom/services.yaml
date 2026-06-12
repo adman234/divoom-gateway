@@ -2,7 +2,7 @@ show_image:
   name: Show image
   description: Shows a static or animated GIF from the media directory on the display.
   target:
-    device:
+    entity:
       integration: divoom
   fields:
     file:
@@ -26,7 +26,7 @@ show_text:
   name: Show text
   description: Shows text as a scrolling animation.
   target:
-    device:
+    entity:
       integration: divoom
   fields:
     text:
@@ -72,7 +72,7 @@ show_clock:
   name: Show clock
   description: Switches to the clock channel.
   target:
-    device:
+    entity:
       integration: divoom
   fields:
     style:
@@ -113,7 +113,7 @@ show_effects:
   name: Show effects
   description: Switches to the effects channel.
   target:
-    device:
+    entity:
       integration: divoom
   fields:
     number:
@@ -129,7 +129,7 @@ show_visualization:
   name: Show visualization
   description: Switches to the music visualization channel.
   target:
-    device:
+    entity:
       integration: divoom
   fields:
     number:
@@ -145,7 +145,7 @@ show_design:
   name: Show design
   description: Switches to the design channel.
   target:
-    device:
+    entity:
       integration: divoom
   fields:
     number:
@@ -161,14 +161,14 @@ show_lyrics:
   name: Show lyrics
   description: Switches to the lyrics channel (not supported by every device).
   target:
-    device:
+    entity:
       integration: divoom
 
 show_scoreboard:
   name: Show scoreboard
   description: Shows the scoreboard with the given scores.
   target:
-    device:
+    entity:
       integration: divoom
   fields:
     player1:
@@ -190,7 +190,7 @@ show_timer:
   name: Show timer
   description: Starts or stops the timer tool.
   target:
-    device:
+    entity:
       integration: divoom
   fields:
     start:
@@ -204,7 +204,7 @@ show_countdown:
   name: Show countdown
   description: Starts or stops the countdown tool.
   target:
-    device:
+    entity:
       integration: divoom
   fields:
     start:
@@ -223,7 +223,7 @@ show_noise:
   name: Show noise meter
   description: Starts or stops the noise meter.
   target:
-    device:
+    entity:
       integration: divoom
   fields:
     start:
@@ -236,11 +236,11 @@ show_radio:
   name: Show radio
   description: Shows and plays the radio channel (audio devices only).
   target:
-    device:
+    entity:
       integration: divoom
   fields:
     "on":
-      name: On
+      name: 'On'
       default: true
       selector:
         boolean:
@@ -258,7 +258,7 @@ show_sleep:
   name: Show sleep mode
   description: Starts or stops the sleep mode with soothing sounds and light.
   target:
-    device:
+    entity:
       integration: divoom
   fields:
     start:
@@ -314,7 +314,7 @@ show_equalizer:
   name: Show equalizer
   description: Shows the music equalizer (Ditoo Mic only).
   target:
-    device:
+    entity:
       integration: divoom
   fields:
     number:
@@ -341,7 +341,7 @@ play_game:
   name: Play game
   description: Opens a game on the device.
   target:
-    device:
+    entity:
       integration: divoom
   fields:
     number:
@@ -357,7 +357,7 @@ game_control:
   name: Game control
   description: Sends a control command to the currently open game.
   target:
-    device:
+    entity:
       integration: divoom
   fields:
     action:
@@ -378,7 +378,7 @@ set_keyboard:
   name: Keyboard light
   description: Controls the keyboard LEDs (Ditoo only).
   target:
-    device:
+    entity:
       integration: divoom
   fields:
     action:
@@ -396,7 +396,7 @@ set_playstate:
   name: Set playstate
   description: Plays or pauses the current music (audio devices only).
   target:
-    device:
+    entity:
       integration: divoom
   fields:
     playing:
@@ -409,7 +409,7 @@ set_datetime:
   name: Set date & time
   description: Sets the device clock. Defaults to the current time.
   target:
-    device:
+    entity:
       integration: divoom
   fields:
     datetime:
@@ -423,7 +423,7 @@ set_weather:
   name: Set weather
   description: Sets the weather shown on the weather channel.
   target:
-    device:
+    entity:
       integration: divoom
   fields:
     temperature:
@@ -444,7 +444,7 @@ set_alarm:
   name: Set alarm
   description: Configures an alarm slot on the device.
   target:
-    device:
+    entity:
       integration: divoom
   fields:
     number:
@@ -507,7 +507,7 @@ set_memorial:
   name: Set memorial
   description: Configures a memorial (reminder) slot on the device.
   target:
-    device:
+    entity:
       integration: divoom
   fields:
     number:
@@ -534,7 +534,7 @@ send_raw:
   name: Send raw command
   description: Sends raw command bytes to the device (advanced).
   target:
-    device:
+    entity:
       integration: divoom
   fields:
     raw:

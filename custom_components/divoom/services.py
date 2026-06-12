@@ -6,7 +6,7 @@ import os
 
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 
 from .const import DOMAIN
 from .hub import DivoomHub
@@ -25,17 +25,28 @@ WEATHER_MODES = {
 
 
 def _resolve_hubs(hass: HomeAssistant, call: ServiceCall) -> list[DivoomHub]:
-    """Resolve the targeted device_ids of a service call into hubs."""
+    """Resolve the targeted devices/entities of a service call into hubs."""
     device_ids = call.data.get("device_id") or []
     if isinstance(device_ids, str):
         device_ids = [device_ids]
+    device_ids = list(device_ids)
 
-    registry = dr.async_get(hass)
+    entity_ids = call.data.get("entity_id") or []
+    if isinstance(entity_ids, str):
+        entity_ids = [entity_ids]
+
+    entity_registry = er.async_get(hass)
+    for entity_id in entity_ids:
+        entry = entity_registry.async_get(entity_id)
+        if entry is not None and entry.device_id is not None:
+            device_ids.append(entry.device_id)
+
+    device_registry = dr.async_get(hass)
     hubs: dict[str, DivoomHub] = hass.data.get(DOMAIN, {}).get("hubs", {})
 
     resolved: list[DivoomHub] = []
     for device_id in device_ids:
-        device = registry.async_get(device_id)
+        device = device_registry.async_get(device_id)
         if device is None:
             continue
         macs = [identifier[1] for identifier in device.identifiers if identifier[0] == DOMAIN]
