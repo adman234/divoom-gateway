@@ -70,7 +70,7 @@ class DivoomHub:
     def execute(self, command, *args, **kwargs):
         """Run a device command while holding the connection lock. Blocking."""
         with self._lock:
-            skip_ping = command in ("send_gamecontrol", "send_raw")
+            skip_ping = command in ("send_gamecontrol", "send_raw", "send_command")
             self.device.reconnect(skipPing=skip_ping)
             return getattr(self.device, command)(*args, **kwargs)
 
