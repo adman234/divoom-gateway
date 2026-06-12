@@ -58,7 +58,7 @@ This firmware obviously needs an ESP32. Other then that, not much is needed, as 
 
 ### Easy Installation
 
-Use the **[web installer](https://REPO_OWNER.github.io/REPO_NAME/)** in Chrome or Edge: plug in your ESP32 via USB,
+Use the **[web installer](https://adman234.github.io/divoom-gateway/)** in Chrome or Edge: plug in your ESP32 via USB,
 click Install, and enter your WiFi credentials when prompted (Improv). No toolchain needed.
 
 ### Manual Installation

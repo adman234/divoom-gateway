@@ -27,7 +27,7 @@ directly.
 
 ### 1. Flash the gateway (skip if using direct Bluetooth)
 
-1. Open the **[web installer](https://REPO_OWNER.github.io/REPO_NAME/)** in Chrome or Edge
+1. Open the **[web installer](https://adman234.github.io/divoom-gateway/)** in Chrome or Edge
 2. Plug your ESP32 in via USB and click **Install**
 3. Enter your WiFi credentials when prompted (Improv)
 4. Done — the gateway announces itself on your network via mDNS/zeroconf
@@ -54,7 +54,7 @@ but it still works for pre-seeding defaults.
 
 ### 2. Install the Home Assistant integration
 
-[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=REPO_OWNER&repository=REPO_NAME&category=integration)
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=adman234&repository=divoom-gateway&category=integration)
 
 Install via HACS (or copy `custom_components/divoom` into your config folder), restart Home Assistant,
 then add the **Divoom** integration. If the gateway already discovered your Divoom device, it shows up
