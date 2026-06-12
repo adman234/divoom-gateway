@@ -54,6 +54,15 @@ void BluetoothHandler::task(void *parameter) {
 }
 
 /**
+ * shuts bluetooth down completely. required before a soft restart, because
+ * an active BT Classic controller can wedge the radio on the next boot
+*/
+void BluetoothHandler::stop(void) {
+    serialBT.end();
+    btStop();
+}
+
+/**
  * checks connection state
 */
 bool BluetoothHandler::check(void) {
@@ -94,6 +103,7 @@ void BluetoothHandler::discover(int timeout) {
         ESP.restart();
     }
 
+    discoveredCount = 0;
     for (int i = 0; i < devices->getCount(); i++) {
         BTAdvertisedDevice* device = devices->getDevice(i);
 
@@ -113,6 +123,13 @@ void BluetoothHandler::discover(int timeout) {
         if (supported) {
             MDNS.addServiceTxt("_divoom_esp32", "_tcp", "device_mac", device->getAddress().toString().c_str());
             MDNS.addServiceTxt("_divoom_esp32", "_tcp", "device_name", name.c_str());
+        }
+
+        // remember it for the web interface
+        if (discoveredCount < BT_DISCOVERED_MAX) {
+            strlcpy(discovered[discoveredCount].mac, device->getAddress().toString().c_str(), sizeof(discovered[0].mac));
+            strlcpy(discovered[discoveredCount].name, name.c_str(), sizeof(discovered[0].name));
+            discoveredCount++;
         }
 
         // pass it into the input handlers for an advertise announcement

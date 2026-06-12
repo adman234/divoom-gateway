@@ -17,11 +17,19 @@
     #error Serial Bluetooth not available or not enabled. It is only available for the ESP32 chip.
     #endif
 
+    typedef struct {
+        char mac[18];
+        char name[33];
+    } bt_device_t;
+
+    #define BT_DISCOVERED_MAX 8
+
     class BluetoothHandler {
         public:
             BluetoothHandler();
             static void setup(void);
             static void loop(void);
+            static void stop(void);
             static bool check(void);
 
             static bool connect(BTAddress address, uint16_t channel, const char *pin);
@@ -29,6 +37,10 @@
             static bool disconnect(void);
 
             static size_t send(const uint8_t *buffer, size_t size);
+
+            // last discovery results, for the web interface
+            inline static bt_device_t discovered[BT_DISCOVERED_MAX];
+            inline static size_t discoveredCount;
 
         private:
             inline static bool isConnected;

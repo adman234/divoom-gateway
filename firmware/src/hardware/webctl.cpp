@@ -15,6 +15,7 @@ static const char indexHtml[] PROGMEM = R"html(<!DOCTYPE html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Divoom Gateway</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='3' fill='%23111418'/><rect x='3' y='3' width='4' height='4' fill='%238ab4f8'/><rect x='9' y='3' width='4' height='4' fill='%2381c995'/><rect x='3' y='9' width='4' height='4' fill='%23fdd663'/><rect x='9' y='9' width='4' height='4' fill='%23f28b82'/></svg>">
 <style>
 :root{color-scheme:dark}
 *{box-sizing:border-box}
@@ -37,6 +38,7 @@ button.secondary{background:#3c4043;color:#e8eaed}
 .kv span:first-child{color:#9aa0a6}
 .ok{color:#81c995}.bad{color:#f28b82}
 .note{font-size:.8em;color:#9aa0a6;margin-top:8px}
+.warn{background:#2a2218;border-left:4px solid #fdd663;padding:8px 12px;border-radius:8px;font-size:.8em;margin-top:10px}
 #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#8ab4f8;color:#111418;padding:10px 20px;border-radius:8px;font-weight:600;display:none}
 </style>
 </head>
@@ -49,9 +51,11 @@ button.secondary{background:#3c4043;color:#e8eaed}
 <div class="kv"><span>WiFi</span><span id="s-wifi"></span></div>
 <div class="kv"><span>IP address</span><span id="s-ip"></span></div>
 <div class="kv"><span>Bluetooth</span><span id="s-bt"></span></div>
+<div class="kv"><span>Divoom devices found</span><span id="s-devices"></span></div>
 <div class="kv"><span>MQTT</span><span id="s-mqtt"></span></div>
 <div class="kv"><span>Free heap</span><span id="s-heap"></span></div>
 <div class="kv"><span>Uptime</span><span id="s-uptime"></span></div>
+<p class="note">The Bluetooth connection to a Divoom device is commanded by Home Assistant (or TCP/MQTT/Serial clients) &mdash; the gateway connects on demand. Discovery runs every ~15 seconds.</p>
 </section>
 
 <form id="config">
@@ -99,12 +103,14 @@ button.secondary{background:#3c4043;color:#e8eaed}
 <button type="submit">Upload &amp; Install</button>
 </form>
 <p class="note">Upload a firmware .bin file. The device restarts automatically when done.</p>
+<p class="warn">&#9888;&#65039; Untested feature. If an over-the-air update fails or the device misbehaves afterwards, re-flash via USB at the web installer.</p>
 </section>
 
 <section>
 <h2>Maintenance</h2>
 <button class="secondary" onclick="post('/api/restart')">Restart</button>
 <button class="danger" onclick="if(confirm('Erase all settings?'))post('/api/reset')">Factory reset</button>
+<p class="warn">&#9888;&#65039; Factory reset is untested. It erases all settings (incl. WiFi) and the gateway reopens its setup access point. If it does not come back, re-flash via USB.</p>
 </section>
 </main>
 <div id="toast"></div>
@@ -118,6 +124,7 @@ $('version').textContent='v'+j.version;
 $('s-wifi').innerHTML=j.wifi.connected?'<span class="ok">'+j.wifi.ssid+' ('+j.wifi.rssi+' dBm)</span>':(j.wifi.ap?'<span class="bad">access point mode</span>':'<span class="bad">disconnected</span>');
 $('s-ip').textContent=j.wifi.ip;
 $('s-bt').innerHTML=j.bluetooth.connected?'<span class="ok">connected</span>':'<span>not connected</span>';
+$('s-devices').textContent=j.bluetooth.devices.length?j.bluetooth.devices.map(d=>d.name+' ('+d.mac+')').join(', '):'none yet';
 $('s-mqtt').innerHTML=j.mqtt.configured?(j.mqtt.connected?'<span class="ok">connected</span>':'<span class="bad">disconnected</span>'):'<span>not configured</span>';
 $('s-heap').textContent=Math.round(j.heap/1024)+' KB';
 $('s-uptime').textContent=fmtUp(j.uptime);
@@ -150,7 +157,9 @@ void WebHandler::setup(void) {
     server = new AsyncWebServer(80);
 
     server->on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-        request->send_P(200, "text/html", indexHtml);
+        // explicit length from flash: the chunked variants proved unreliable on real hardware
+        AsyncWebServerResponse *response = request->beginResponse_P(200, "text/html", (const uint8_t*)indexHtml, sizeof(indexHtml) - 1);
+        request->send(response);
     });
 
     server->on("/api/status", HTTP_GET, handleStatus);
@@ -178,6 +187,10 @@ void WebHandler::setup(void) {
 */
 void WebHandler::loop(void) {
     if (restartPending && getElapsed(restartTimer) > 1000) {
+        // shut bluetooth down first: a soft restart with an active BT Classic
+        // controller can leave the radio wedged until a power cycle
+        BluetoothHandler::stop();
+        delay(100);
         ESP.restart();
     }
 }
@@ -198,7 +211,13 @@ void WebHandler::handleStatus(AsyncWebServerRequest *request) {
     json += "\"rssi\":" + String(wifiConnected ? WiFi.RSSI() : 0) + ",";
     json += "\"ip\":\"" + (WifiHandler::isAccessPoint() ? WiFi.softAPIP().toString() : WiFi.localIP().toString()) + "\"";
     json += "},";
-    json += "\"bluetooth\":{\"connected\":" + String(BluetoothHandler::check() ? "true" : "false") + "},";
+    json += "\"bluetooth\":{\"connected\":" + String(BluetoothHandler::check() ? "true" : "false") + ",\"devices\":[";
+    for (size_t i = 0; i < BluetoothHandler::discoveredCount && i < BT_DISCOVERED_MAX; i++) {
+        if (i > 0) json += ",";
+        json += "{\"mac\":\"" + jsonEscape(BluetoothHandler::discovered[i].mac) + "\",";
+        json += "\"name\":\"" + jsonEscape(BluetoothHandler::discovered[i].name) + "\"}";
+    }
+    json += "]},";
     json += "\"mqtt\":{";
     json += "\"configured\":" + String(Settings::hasMqtt() ? "true" : "false") + ",";
     json += "\"connected\":" + String(MqttInput::check() ? "true" : "false");

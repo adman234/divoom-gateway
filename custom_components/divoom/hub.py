@@ -3,6 +3,7 @@ import logging
 import threading
 
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 
 _LOGGER = logging.getLogger(__package__)
 
@@ -70,9 +71,25 @@ class DivoomHub:
     def execute(self, command, *args, **kwargs):
         """Run a device command while holding the connection lock. Blocking."""
         with self._lock:
-            skip_ping = command in ("send_gamecontrol", "send_raw", "send_command")
-            self.device.reconnect(skipPing=skip_ping)
-            return getattr(self.device, command)(*args, **kwargs)
+            try:
+                return self._execute(command, *args, **kwargs)
+            except OSError as error:
+                # the connection may be stale (e.g. the gateway restarted):
+                # tear it down and retry once before giving up
+                _LOGGER.warning("Divoom: connection to %s failed (%s), reconnecting", self.mac, error)
+                try:
+                    self.device.disconnect()
+                    return self._execute(command, *args, **kwargs)
+                except OSError as retry_error:
+                    target = self.host or self.mac
+                    raise HomeAssistantError(
+                        f"Could not reach the Divoom device via {target}: {retry_error}"
+                    ) from retry_error
+
+    def _execute(self, command, *args, **kwargs):
+        skip_ping = command in ("send_gamecontrol", "send_raw", "send_command")
+        self.device.reconnect(skipPing=skip_ping)
+        return getattr(self.device, command)(*args, **kwargs)
 
     async def async_execute(self, command, *args, **kwargs):
         """Run a device command from the event loop."""
