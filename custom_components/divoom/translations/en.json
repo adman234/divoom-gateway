@@ -19,7 +19,11 @@
         "title": "Divoom device: port",
         "description": "Select the channel/port of your Divoom device.",
         "data": {
-          "port": "Port"
+          "port": "Port",
+          "host": "Divoom Gateway hostname/IP"
+        },
+        "data_description": {
+          "host": "Optional: the hostname or IP of an ESP32 running the Divoom Gateway firmware, which acts as a Bluetooth Classic proxy. Leave empty to connect directly via the Bluetooth hardware of your Home Assistant host."
         }
       },
       "device_type": {

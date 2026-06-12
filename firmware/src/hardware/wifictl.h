@@ -19,10 +19,12 @@
             static void reconnect(void);
 
             static bool isAccessPoint(void);
+            static void skipScanResults(void);
 
         private:
             inline static bool isConnected;
             inline static bool isApMode;
+            inline static bool skipScan;
             inline static uint8_t retryCount;
             inline static unsigned long timer;
             inline static unsigned long apTimer;

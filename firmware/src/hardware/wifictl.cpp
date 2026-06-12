@@ -125,6 +125,14 @@ bool WifiHandler::isAccessPoint(void) {
 }
 
 /**
+ * makes the next scan-done event leave its results alone, so another
+ * consumer (Improv) can read them instead of the auto-connect logic
+*/
+void WifiHandler::skipScanResults(void) {
+    skipScan = true;
+}
+
+/**
  * starts the fallback access point including the captive portal DNS
 */
 void WifiHandler::startAccessPoint(void) {
@@ -159,6 +167,10 @@ void WifiHandler::stopAccessPoint(void) {
  * callback for when the scan finished
 */
 void WifiHandler::scanned(WiFiEvent_t event, WiFiEventInfo_t info) {
+    if (skipScan) {
+        skipScan = false;
+        return;
+    }
     if (info.wifi_scan_done.number > 0) connect();
 }
 

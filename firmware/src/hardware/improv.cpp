@@ -160,10 +160,10 @@ void ImprovHandler::handleRpc(const uint8_t *payload, size_t size) {
         }
 
         case RPC_WIFI_NETWORKS: {
-            int16_t count = WiFi.scanComplete();
-            if (count <= 0) {
-                count = WiFi.scanNetworks(false, false, false, 500);
-            }
+            // a fresh blocking scan: keep the auto-connect logic from
+            // deleting the results before we had a chance to report them
+            WifiHandler::skipScanResults();
+            int16_t count = WiFi.scanNetworks(false, false, false, 300);
 
             for (int16_t i = 0; i < count; i++) {
                 auto ssid = WiFi.SSID(i);
@@ -176,6 +176,7 @@ void ImprovHandler::handleRpc(const uint8_t *payload, size_t size) {
             }
 
             sendRpcResult(RPC_WIFI_NETWORKS, nullptr, 0);
+            WiFi.scanDelete();
             break;
         }
 

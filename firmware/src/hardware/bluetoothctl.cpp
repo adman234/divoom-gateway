@@ -3,6 +3,7 @@
 
 #include "util.h"
 #include "hardware/settings.h"
+#include "hardware/wifictl.h"
 #include "input/base.h"
 #include "output/base.h"
 
@@ -23,6 +24,10 @@ void BluetoothHandler::setup(void) {
  * loop functionality
 */
 void BluetoothHandler::loop(void) {
+    // bluetooth inquiry and wifi share one radio: pause discovery while the
+    // captive portal is up, otherwise wifi scans during provisioning come up empty
+    if (WifiHandler::isAccessPoint()) return;
+
     if (getElapsed(timer) > 15000) {
         timer = millis();
 

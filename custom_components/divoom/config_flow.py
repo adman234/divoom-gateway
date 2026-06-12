@@ -150,6 +150,8 @@ class DivoomBluetoothConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             if CONF_PORT in user_input:
                 self._device_port = user_input[CONF_PORT]
+            if CONF_HOST in user_input:
+                self._device_host = user_input[CONF_HOST] or None
 
             return await self.async_step_device_type()
 
@@ -170,7 +172,8 @@ class DivoomBluetoothConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="device_port",
             data_schema=vol.Schema(
                 {
-                    vol.Optional(CONF_PORT, default=device_port): cv.port
+                    vol.Optional(CONF_PORT, default=device_port): cv.port,
+                    vol.Optional(CONF_HOST, default=self._device_host or ""): cv.string
                 }
             ),
         )

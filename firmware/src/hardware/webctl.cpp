@@ -150,7 +150,7 @@ void WebHandler::setup(void) {
     server = new AsyncWebServer(80);
 
     server->on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-        request->send(200, "text/html", indexHtml);
+        request->send_P(200, "text/html", indexHtml);
     });
 
     server->on("/api/status", HTTP_GET, handleStatus);
