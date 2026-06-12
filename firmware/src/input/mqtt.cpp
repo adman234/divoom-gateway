@@ -1,8 +1,9 @@
-
+﻿
 
 #include "mqtt.h"
 
 #include "hardware/bluetoothctl.h"
+#include "hardware/settings.h"
 #include "hardware/wifictl.h"
 
 #include "input/base.h"
@@ -20,17 +21,17 @@ MqttInput::MqttInput() {
  * setup functionality
 */
 void MqttInput::setup() {
-    if (strlen(MQTT_HOST) == 0) return;
+    if (!Settings::hasMqtt()) return;
 
-    snprintf(topicState, sizeof( topicState ), MQTT_TOPIC, "proxy");
-    snprintf(topicHeap, sizeof( topicHeap ), MQTT_TOPIC, "heap");
-    snprintf(topicBluetooth, sizeof( topicBluetooth ), MQTT_TOPIC, "bluetooth");
-    snprintf(topicCommand, sizeof( topicCommand ), MQTT_TOPIC, "command");
+    snprintf(topicState, sizeof( topicState ), "%s/%s", Settings::mqttPrefix, "proxy");
+    snprintf(topicHeap, sizeof( topicHeap ), "%s/%s", Settings::mqttPrefix, "heap");
+    snprintf(topicBluetooth, sizeof( topicBluetooth ), "%s/%s", Settings::mqttPrefix, "bluetooth");
+    snprintf(topicCommand, sizeof( topicCommand ), "%s/%s", Settings::mqttPrefix, "command");
 
     mqttClient.setKeepAlive(10);
-    mqttClient.setClientId(MQTT_CLIENT);
-    mqttClient.setCredentials(MQTT_USER, MQTT_PASS);
-    mqttClient.setServer(MQTT_HOST, MQTT_PORT);
+    mqttClient.setClientId(Settings::hostname);
+    mqttClient.setCredentials(Settings::mqttUser, Settings::mqttPass);
+    mqttClient.setServer(Settings::mqttHost, Settings::mqttPort);
     mqttClient.setWill(topicState, 1, true, "offline");
 
     mqttClient.onConnect(connected);
@@ -42,7 +43,7 @@ void MqttInput::setup() {
  * loop functionality
 */
 void MqttInput::loop() {
-    if (strlen(MQTT_HOST) == 0) return;
+    if (!Settings::hasMqtt()) return;
 
     bool isWifiConnected = WifiHandler::check(true);
     if (getElapsed(timer) > 15000 || (isWifiConnected && !wasWifiConnected)) {
@@ -60,7 +61,7 @@ void MqttInput::loop() {
  * checks connection and keeps it up
 */
 bool MqttInput::check(void) {
-    if (strlen(MQTT_HOST) == 0) return false;
+    if (!Settings::hasMqtt()) return false;
     if (!wasWifiConnected) return false;
 
     if (mqttClient.connected())
@@ -79,7 +80,7 @@ bool MqttInput::check(void) {
  * updates some basic values in MQTT
 */
 void MqttInput::update(void) {
-    if (strlen(MQTT_HOST) == 0) return;
+    if (!Settings::hasMqtt()) return;
     if (!isConnected) return;
 
     mqttClient.publish(topicState, 1, true, "online");
@@ -94,7 +95,7 @@ void MqttInput::update(void) {
  * the forward channel for a bluetooth connection
 */
 void MqttInput::forward(const char *address, uint16_t port) {
-    if (strlen(MQTT_HOST) == 0) return;
+    if (!Settings::hasMqtt()) return;
     if (!isConnected) return;
 
     mqttClient.publish(topicBluetooth, 1, false, port > 0 ? "connecting" : "disconnected");
@@ -111,7 +112,7 @@ void MqttInput::forward(const uint8_t *buffer, size_t size) {
  * the backward channel for bluetooth data
 */
 void MqttInput::backward(const uint8_t *buffer, size_t size) {
-    if (strlen(MQTT_HOST) == 0) return;
+    if (!Settings::hasMqtt()) return;
     if (!isConnected) return;
 
     const char *payload = BluetoothHandler::check() ? "connected" : "disconnected";
@@ -126,15 +127,15 @@ void MqttInput::backward(const uint8_t *buffer, size_t size) {
  * the channel for an advertised bluetooth device
 */
 void MqttInput::advertise(const uint8_t* address, const char* name, size_t size, bool supported) {
-    if (strlen(MQTT_HOST) == 0) return;
+    if (!Settings::hasMqtt()) return;
     if (!isConnected) return;
     
     size_t j = 0;
     char topicAddress[strlen("advertise/") + 18 + 1];
     snprintf(topicAddress, sizeof( topicAddress ), "advertise/%02X:%02X:%02X:%02X:%02X:%02X", address[0], address[1], address[2], address[3], address[4], address[5]);
 
-    char topicAdvertise[strlen(MQTT_TOPIC) + strlen("advertise/") + strlen(topicAddress)];
-    snprintf(topicAdvertise, sizeof( topicAdvertise ), MQTT_TOPIC, topicAddress);
+    char topicAdvertise[strlen(Settings::mqttPrefix) + 1 + strlen(topicAddress) + 1];
+    snprintf(topicAdvertise, sizeof( topicAdvertise ), "%s/%s", Settings::mqttPrefix, topicAddress);
     mqttClient.publish(topicAdvertise, 0, false, name);
 }
 

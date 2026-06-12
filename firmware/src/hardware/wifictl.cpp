@@ -2,6 +2,7 @@
 #include "wifictl.h"
 
 #include "util.h"
+#include "hardware/settings.h"
 #include "input/base.h"
 #include "output/base.h"
 
@@ -17,17 +18,27 @@ void WifiHandler::setup(void) {
     WiFi.persistent(true);
     WiFi.setAutoConnect(true);
     WiFi.setAutoReconnect(true);
-    WiFi.setHostname(WIFI_NAME);
+    WiFi.setHostname(Settings::hostname);
     WiFi.onEvent(scanned, WiFiEvent_t::ARDUINO_EVENT_WIFI_SCAN_DONE);
     WiFi.onEvent(connected, WiFiEvent_t::ARDUINO_EVENT_WIFI_STA_GOT_IP);
     WiFi.onEvent(disconnected, WiFiEvent_t::ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
-    WiFi.scanNetworks(true, false, false, 500);
+
+    if (Settings::hasWifi()) {
+        WiFi.scanNetworks(true, false, false, 500);
+    } else {
+        // nothing configured yet: open the captive portal right away
+        startAccessPoint();
+    }
 }
 
 /**
  * loop functionality
 */
 void WifiHandler::loop(void) {
+    if (isApMode) {
+        dnsServer.processNextRequest();
+    }
+
     if (getElapsed(timer) > 10000) {
         timer = millis();
 
@@ -40,7 +51,7 @@ void WifiHandler::loop(void) {
 */
 bool WifiHandler::check(bool fast) {
     if (fast) return isConnected;
-    
+
     if (WiFi.status() == WL_CONNECTED)
     {
         isConnected = true;
@@ -50,7 +61,14 @@ bool WifiHandler::check(bool fast) {
     else
     {
         isConnected = false;
-        if (retryCount >= WIFI_RETRY) ESP.restart();
+        if (!Settings::hasWifi()) {
+            if (!isApMode) startAccessPoint();
+            return false;
+        }
+
+        // after too many retries, fall back to the captive portal but
+        // keep scanning in the background, in case the network comes back
+        if (retryCount >= WIFI_RETRY && !isApMode) startAccessPoint();
 
         int8_t wifiStatus = WiFi.status();
         int8_t scanStatus = WiFi.scanComplete();
@@ -58,8 +76,11 @@ bool WifiHandler::check(bool fast) {
              wifiStatus == WL_NO_SSID_AVAIL ||
              wifiStatus == WL_CONNECT_FAILED ||
              wifiStatus == WL_DISCONNECTED) && scanStatus != -1) {
-            WiFi.scanNetworks(true, false, false, 2500);
-            retryCount++;
+            if (!isApMode || getElapsed(apTimer) > 30000) {
+                apTimer = millis();
+                WiFi.scanNetworks(true, false, false, 2500);
+                retryCount++;
+            }
         }
 
         return WiFi.status() == WL_CONNECTED;
@@ -77,11 +98,61 @@ void WifiHandler::connect(void) {
         auto ssid = WiFi.SSID(i);
         if (ssid == NULL || ssid.length() == 0) continue;
 
-        if (ssid == WIFISSID1) { WiFi.begin(WIFISSID1, WIFIPASS1); break; }
-        if (ssid == WIFISSID2) { WiFi.begin(WIFISSID2, WIFIPASS2); break; }
+        if (ssid == Settings::wifiSsid1) { WiFi.begin(Settings::wifiSsid1, Settings::wifiPass1); break; }
+        if (ssid == Settings::wifiSsid2) { WiFi.begin(Settings::wifiSsid2, Settings::wifiPass2); break; }
     }
 
     WiFi.scanDelete();
+}
+
+/**
+ * applies new credentials immediately (after Improv or web configuration)
+*/
+void WifiHandler::reconnect(void) {
+    retryCount = 0;
+    if (strlen(Settings::wifiSsid1) > 0) {
+        WiFi.begin(Settings::wifiSsid1, Settings::wifiPass1);
+    } else if (strlen(Settings::wifiSsid2) > 0) {
+        WiFi.begin(Settings::wifiSsid2, Settings::wifiPass2);
+    }
+}
+
+/**
+ * whether the fallback access point is currently active
+*/
+bool WifiHandler::isAccessPoint(void) {
+    return isApMode;
+}
+
+/**
+ * starts the fallback access point including the captive portal DNS
+*/
+void WifiHandler::startAccessPoint(void) {
+    if (isApMode) return;
+    isApMode = true;
+    apTimer = millis();
+
+    WiFi.mode(WIFI_AP_STA);
+    WiFi.softAP(Settings::hostname, strlen(AP_PASSWORD) > 0 ? AP_PASSWORD : NULL);
+
+    dnsServer.setErrorReplyCode(DNSReplyCode::NoError);
+    dnsServer.start(53, "*", WiFi.softAPIP());
+
+    Serial.print("AP: ");
+    WiFi.softAPIP().printTo(Serial);
+    Serial.println("");
+}
+
+/**
+ * stops the fallback access point
+*/
+void WifiHandler::stopAccessPoint(void) {
+    if (!isApMode) return;
+    isApMode = false;
+
+    dnsServer.stop();
+    WiFi.softAPdisconnect(true);
+    WiFi.mode(WIFI_STA);
 }
 
 /**
@@ -98,14 +169,17 @@ void WifiHandler::connected(WiFiEvent_t event, WiFiEventInfo_t info) {
     isConnected = true;
     retryCount = 0;
 
+    stopAccessPoint();
+
     WiFi.setTxPower(WIFI_POWER_15dBm);
     WiFi.setAutoConnect(true);
     WiFi.setAutoReconnect(true);
-    WiFi.setHostname(WIFI_NAME);
+    WiFi.setHostname(Settings::hostname);
     WiFi.persistent(true);
 
-    MDNS.begin(WIFI_NAME);
+    MDNS.begin(Settings::hostname);
     MDNS.addService("_divoom_esp32", "_tcp", TCP_PORT);
+    MDNS.addService("_http", "_tcp", 80);
 
     Serial.print("IP: ");
     WiFi.localIP().printTo(Serial);

@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Divoom Gateway — Web Installer</title>
+<script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+<style>
+:root{color-scheme:dark}
+body{font-family:system-ui,sans-serif;background:#111418;color:#e8eaed;margin:0;display:flex;justify-content:center;padding:24px}
+main{max-width:640px;width:100%}
+h1{font-size:1.6em}
+section{background:#1c2026;border-radius:12px;padding:20px;margin:16px 0}
+h2{font-size:1.05em;color:#8ab4f8;margin-top:0}
+a{color:#8ab4f8}
+ol li{margin:6px 0}
+.warn{background:#2a2218;border-left:4px solid #fdd663;padding:10px 14px;border-radius:8px;font-size:.9em}
+esp-web-install-button{--esp-tools-button-color:#8ab4f8;--esp-tools-button-text-color:#111418}
+code{background:#111418;padding:2px 6px;border-radius:4px}
+footer{color:#9aa0a6;font-size:.85em;margin:24px 0;text-align:center}
+</style>
+</head>
+<body>
+<main>
+<h1>📟 Divoom Gateway</h1>
+<p>Turns an ESP32 into a Bluetooth&nbsp;Classic gateway for Divoom pixel-art devices
+(Pixoo, Ditoo, Timebox, Tivoo&hellip;), made for the
+<a href="https://github.com/REPO_PLACEHOLDER">Divoom Home Assistant integration</a>.</p>
+
+<section>
+<h2>Install firmware</h2>
+<ol>
+<li>Connect your ESP32 to this computer with a USB <em>data</em> cable.</li>
+<li>Click <strong>Install</strong> and pick the serial port.</li>
+<li>After flashing, the installer asks for your WiFi credentials &mdash; no code or config files needed.</li>
+<li>Open the device's web page (shown after setup) to configure MQTT and other options.</li>
+</ol>
+<p>
+<esp-web-install-button manifest="manifest.json">
+  <span slot="unsupported">Your browser does not support Web Serial. Use Chrome or Edge on desktop.</span>
+  <span slot="not-allowed">You must view this page over HTTPS to install.</span>
+</esp-web-install-button>
+</p>
+<p class="warn">⚠️ Only the <strong>original ESP32</strong> chip works. The ESP32-S2, S3 and C3 do not have
+Bluetooth Classic, which Divoom devices require.</p>
+</section>
+
+<section>
+<h2>After installation</h2>
+<p>The gateway shows up in Home Assistant automatically (zeroconf) once it has discovered your Divoom device
+via Bluetooth. You can also reach its web interface at
+<a href="http://divoom-gateway.local">http://divoom-gateway.local</a> to check status, change WiFi/MQTT
+settings, or update the firmware later.</p>
+<p>If the gateway can't reach your WiFi, it opens an access point called <code>Divoom-Gateway</code>
+(password <code>divoom1234</code>) with a captive setup portal.</p>
+</section>
+
+<footer>
+<a href="https://github.com/REPO_PLACEHOLDER">Source on GitHub</a> &middot; MIT licensed
+</footer>
+</main>
+</body>
+</html>

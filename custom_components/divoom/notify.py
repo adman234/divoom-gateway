@@ -1,5 +1,5 @@
 """Switching states and sending images or animations to a divoom device."""
-import logging, os, socket
+import logging, os, socket, threading
 import voluptuous as vol
 
 from homeassistant.core import HomeAssistant
@@ -15,6 +15,7 @@ from homeassistant.components.notify import (
 
 from homeassistant.const import CONF_HOST, CONF_MAC, CONF_PORT
 from .const import CONF_DEVICE_TYPE, CONF_MEDIA_DIR, CONF_MEDIA_DIR_DEFAULT, CONF_ESCAPE_PAYLOAD, DOMAIN  # pylint:disable=unused-import
+from .hub import create_device
 
 _LOGGER = logging.getLogger(__package__)
 
@@ -129,6 +130,10 @@ async def async_get_service(
     device_type = "pixoo"
     media_directory = "pixelart"
     escape_payload = None
+    hub = None
+
+    if discovery_info is not None and 'entry_id' in discovery_info:
+        hub = hass.data.get(DOMAIN, {}).get('hubs', {}).get(discovery_info['entry_id'])
 
     if discovery_info is not None:
         if CONF_HOST in discovery_info: host = discovery_info[CONF_HOST]
@@ -147,7 +152,7 @@ async def async_get_service(
         if CONF_ESCAPE_PAYLOAD in config: escape_payload = config[CONF_ESCAPE_PAYLOAD]
     
     font_directory = hass.config.path(f"{DATA_CUSTOM_COMPONENTS}/{DOMAIN}/fonts/")
-    notificationService = DivoomNotificationService(host, mac, port, device_type, media_directory, font_directory, escape_payload)
+    notificationService = DivoomNotificationService(host, mac, port, device_type, media_directory, font_directory, escape_payload, hub=hub)
 
     hass.data.setdefault(DOMAIN, {})
     domainConfig = hass.data.get(DOMAIN)
@@ -170,59 +175,27 @@ async def async_get_service(
 class DivoomNotificationService(BaseNotificationService):
     """Implement the notification service for Divoom."""
 
-    def __init__(self, host, mac, port, device_type, media_directory, font_directory, escape_payload):
+    def __init__(self, host, mac, port, device_type, media_directory, font_directory, escape_payload, hub=None):
         assert mac is not None
         assert port is not None
         assert device_type is not None
         assert media_directory is not None
         assert font_directory is not None
 
-        self._device = None
         self._media_directory = media_directory
         self._font_directory = font_directory
 
-        if device_type == 'aurabox':
-            from .devices.aurabox import Aurabox
-            self._device = Aurabox(host=host, mac=mac, port=port, escapePayload=escape_payload, logger=_LOGGER)
-        
-        if device_type == 'backpack':
-            from .devices.backpack import Backpack
-            self._device = Backpack(host=host, mac=mac, port=port, escapePayload=escape_payload, logger=_LOGGER)
-        
-        if device_type == 'ditoo':
-            from .devices.ditoo import Ditoo
-            self._device = Ditoo(host=host, mac=mac, port=port, escapePayload=escape_payload, logger=_LOGGER)
-        
-        if device_type == 'ditoomic':
-            from .devices.ditoomic import DitooMic
-            self._device = DitooMic(host=host, mac=mac, port=port, escapePayload=escape_payload, logger=_LOGGER)
-        
-        if device_type == 'pixoo':
-            from .devices.pixoo import Pixoo
-            self._device = Pixoo(host=host, mac=mac, port=port, escapePayload=escape_payload, logger=_LOGGER)
-        
-        if device_type == 'pixoomax':
-            from .devices.pixoomax import PixooMax
-            self._device = PixooMax(host=host, mac=mac, port=port, escapePayload=escape_payload, logger=_LOGGER)
-        
-        if device_type == 'timebox':
-            from .devices.timebox import Timebox
-            self._device = Timebox(host=host, mac=mac, port=port, escapePayload=escape_payload, logger=_LOGGER)
-        
-        if device_type == 'timeboxmini':
-            from .devices.timeboxmini import TimeboxMini
-            self._device = TimeboxMini(host=host, mac=mac, port=port, escapePayload=escape_payload, logger=_LOGGER)
-        
-        if device_type == 'timoo':
-            from .devices.timoo import Timoo
-            self._device = Timoo(host=host, mac=mac, port=port, escapePayload=escape_payload, logger=_LOGGER)
-        
-        if device_type == 'tivoo':
-            from .devices.tivoo import Tivoo
-            self._device = Tivoo(host=host, mac=mac, port=port, escapePayload=escape_payload, logger=_LOGGER)
-        
+        if hub is not None:
+            # config entry path: share the connection (and lock) with the entities
+            self._device = hub.device
+            self._lock = hub._lock
+        else:
+            # legacy configuration.yaml path: own connection
+            self._device = create_device(device_type, host, mac, port, escape_payload, logger=_LOGGER)
+            self._lock = threading.RLock()
+
         if self._device is None:
-            _LOGGER.error("device_type {0} does not exist, divoom will not work".format(media_directory))
+            _LOGGER.error("device_type {0} does not exist, divoom will not work".format(device_type))
         elif not os.path.isdir(media_directory):
             _LOGGER.error("media_directory {0} does not exist, divoom may not work properly".format(media_directory))
 
@@ -233,12 +206,18 @@ class DivoomNotificationService(BaseNotificationService):
         self._device.disconnect()
 
     def connect(self):
-        self._device.connect()
+        with self._lock:
+            self._device.connect()
 
     def disconnect(self):
-        self._device.disconnect()
+        with self._lock:
+            self._device.disconnect()
 
     def send_message(self, message="", **kwargs):
+        with self._lock:
+            return self._send_message(message, **kwargs)
+
+    def _send_message(self, message="", **kwargs):
         if message == "" and kwargs.get(ATTR_DATA) is None:
             _LOGGER.error("Service call needs more information")
             return False

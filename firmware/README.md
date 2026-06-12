@@ -58,7 +58,8 @@ This firmware obviously needs an ESP32. Other then that, not much is needed, as 
 
 ### Easy Installation
 
-In the future I might use [ESP Web Tools](https://esphome.github.io/esp-web-tools/) for an easier installation process. For now, you have to go for the manual installation.
+Use the **[web installer](https://REPO_OWNER.github.io/REPO_NAME/)** in Chrome or Edge: plug in your ESP32 via USB,
+click Install, and enter your WiFi credentials when prompted (Improv). No toolchain needed.
 
 ### Manual Installation
 
@@ -76,14 +77,17 @@ This firmware is a PlatformIO project. Until I can find and prepare a more easy 
 
 ### Easy Configuration
 
-Well again, currently there is no easy way, but that might change in the future.
+All settings (WiFi networks, hostname, MQTT, Bluetooth discovery filter) are stored in flash and configured at runtime:
+
+* **WiFi**: provisioned from the browser during web installation (Improv), or via the captive portal —
+  if the gateway can't reach a configured network it opens an access point (`Divoom-Gateway` / password `divoom1234`).
+* **Everything else**: open the gateway's web page (`http://divoom-gateway.local` or its IP) for live status,
+  all settings, OTA firmware updates, restart and factory reset.
 
 ### Manual Configuration
 
-Currently you need to configure the firmware directly in your own `config_local.h` before flashing. This might change in the future.
-
-The default configuration `config.h` has a lot of empty values you very likely want to fill. To not run into problems with later updates,
-I recommend you to create a `config_local.h` with your own values. Here is an example:
+Optionally, you can still pre-seed defaults at compile time in your own `config_local.h`. Runtime settings
+stored in flash take precedence once saved. Here is an example:
 
 ```
 #ifndef _CONFIG_LOCAL_H

@@ -2,6 +2,7 @@
 #include "bluetoothctl.h"
 
 #include "util.h"
+#include "hardware/settings.h"
 #include "input/base.h"
 #include "output/base.h"
 
@@ -13,7 +14,7 @@ BluetoothHandler::BluetoothHandler() {
  * setup functionality
 */
 void BluetoothHandler::setup(void) {
-    serialBT.begin(BLUETOOTH_NAME, true);
+    serialBT.begin(Settings::hostname, true);
     serialBT.setTimeout(1000);
     serialBT.register_callback(event);
 }
@@ -101,7 +102,7 @@ void BluetoothHandler::discover(int timeout) {
             name.find("Timoo") == std::string::npos &&
             name.find("Tivoo") == std::string::npos &&
             name.find("Divoom") == std::string::npos) supported = false;
-        if (BLUETOOTH_FILTER && !supported) continue;
+        if (Settings::btFilter && !supported) continue;
 
         // pass it into zeroconf
         if (supported) {

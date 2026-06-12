@@ -1,6 +1,7 @@
 
 #include "serial.h"
 
+#include "hardware/improv.h"
 #include "input/base.h"
 #include "output/base.h"
 
@@ -16,16 +17,33 @@ void SerialInput::setup() {
 }
 
 /**
- * loop functionality
+ * loop functionality. reads byte-wise, so binary Improv frames and
+ * line-based text commands can share the same serial connection
 */
 void SerialInput::loop() {
-    char buffer[256];
-    while (serialIn.available()) {
-        size_t size = serialIn.readBytesUntil('\n', buffer, 256);
-        if (buffer[size - 1] == '\r') size -= sizeof(char);
-        buffer[size] = '\0';
+    static char buffer[256];
+    static size_t length = 0;
 
-        SerialInput::parse((char*)buffer, size);
+    while (serialIn.available()) {
+        uint8_t data = serialIn.read();
+
+        int improv = ImprovHandler::feed(data);
+        if (improv == 2) { // header completed: drop the "IMPRO" prefix that leaked into the text buffer
+            length = length >= 5 ? length - 5 : 0;
+            continue;
+        }
+        if (improv == 1) continue;
+
+        if (data == '\n') {
+            size_t size = length;
+            length = 0;
+            if (size > 0 && buffer[size - 1] == '\r') size -= sizeof(char);
+            buffer[size] = '\0';
+
+            if (size > 0) SerialInput::parse((char*)buffer, size);
+        } else if (length < sizeof(buffer) - 1) {
+            buffer[length++] = data;
+        }
     }
 }
 
