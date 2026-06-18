@@ -18,10 +18,10 @@ void WifiHandler::setup(void) {
     WiFi.persistent(true);
     WiFi.setAutoConnect(true);
     WiFi.setAutoReconnect(true);
-    // disable modem power-save: with it on, the radio naps between beacons and
-    // incoming TCP connections are dropped/delayed (the "spins forever, then
-    // works fine later" symptom on the web UI). costs a little power, worth it.
-    WiFi.setSleep(false);
+    // NOTE: do NOT disable modem sleep here. The ESP32 shares one radio between
+    // WiFi and Bluetooth Classic and the coexistence layer *requires* modem
+    // sleep to be enabled; WiFi.setSleep(false) aborts at boot ("Should enable
+    // WiFi modem sleep when both WiFi and Bluetooth are enabled").
     WiFi.setHostname(Settings::hostname);
     WiFi.onEvent(scanned, WiFiEvent_t::ARDUINO_EVENT_WIFI_SCAN_DONE);
     WiFi.onEvent(connected, WiFiEvent_t::ARDUINO_EVENT_WIFI_STA_GOT_IP);
@@ -188,7 +188,6 @@ void WifiHandler::connected(WiFiEvent_t event, WiFiEventInfo_t info) {
     stopAccessPoint();
 
     WiFi.setTxPower(WIFI_POWER_15dBm);
-    WiFi.setSleep(false);
     WiFi.setAutoConnect(true);
     WiFi.setAutoReconnect(true);
     WiFi.setHostname(Settings::hostname);
