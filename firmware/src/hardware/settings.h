@@ -15,6 +15,7 @@
 
             static bool hasWifi(void);
             static bool hasMqtt(void);
+            static bool hasPin(void);
             static void setWifi(const char* ssid, const char* pass);
 
             // values are kept in static buffers, so libraries that keep
@@ -30,6 +31,7 @@
             inline static char mqttPass[65];
             inline static char mqttPrefix[33];
             inline static bool btFilter;
+            inline static char webPin[33];
 
         private:
             inline static Preferences preferences;

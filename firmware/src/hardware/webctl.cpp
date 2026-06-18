@@ -32,6 +32,10 @@ void WebHandler::setup(void) {
 
     server->on("/update", HTTP_POST,
         [](AsyncWebServerRequest *request) {
+            if (!authorized(request)) {
+                request->send(401, "text/plain", "PIN required");
+                return;
+            }
             bool success = !Update.hasError();
             AsyncWebServerResponse *response = request->beginResponse(success ? 200 : 500, "text/plain", success ? "Update successful. Restarting..." : "Update failed.");
             response->addHeader("Connection", "close");
@@ -92,7 +96,7 @@ void WebHandler::handleStatus(AsyncWebServerRequest *request) {
 }
 
 /**
- * GET /api/config (passwords are never sent back)
+ * GET /api/config (passwords and the PIN are never sent back)
 */
 void WebHandler::handleConfigGet(AsyncWebServerRequest *request) {
     String json = "{";
@@ -103,16 +107,32 @@ void WebHandler::handleConfigGet(AsyncWebServerRequest *request) {
     json += "\"mqttPort\":" + String(Settings::mqttPort) + ",";
     json += "\"mqttUser\":\"" + jsonEscape(Settings::mqttUser) + "\",";
     json += "\"mqttPrefix\":\"" + jsonEscape(Settings::mqttPrefix) + "\",";
-    json += "\"btFilter\":\"" + String(Settings::btFilter ? 1 : 0) + "\"";
+    json += "\"btFilter\":\"" + String(Settings::btFilter ? 1 : 0) + "\",";
+    json += "\"pinSet\":" + String(Settings::hasPin() ? "true" : "false");
     json += "}";
 
     request->send(200, "application/json", json);
 }
 
 /**
+ * checks whether a request is allowed to change settings. when a PIN is set,
+ * the request must carry it in the X-Pin header
+*/
+bool WebHandler::authorized(AsyncWebServerRequest *request) {
+    if (!Settings::hasPin()) return true;
+    if (!request->hasHeader("X-Pin")) return false;
+    return request->getHeader("X-Pin")->value() == Settings::webPin;
+}
+
+/**
  * POST /api/config (empty passwords keep their current value)
 */
 void WebHandler::handleConfigPost(AsyncWebServerRequest *request) {
+    if (!authorized(request)) {
+        request->send(401, "text/plain", "PIN required");
+        return;
+    }
+
     if (request->hasParam("hostname", true)) {
         String value = request->getParam("hostname", true)->value();
         if (value.length() > 0) strlcpy(Settings::hostname, value.c_str(), sizeof(Settings::hostname));
@@ -144,6 +164,12 @@ void WebHandler::handleConfigPost(AsyncWebServerRequest *request) {
     if (request->hasParam("btFilter", true))
         Settings::btFilter = request->getParam("btFilter", true)->value() == "1";
 
+    if (request->hasParam("webPinClear", true) && request->getParam("webPinClear", true)->value() == "1") {
+        Settings::webPin[0] = '\0';
+    } else if (request->hasParam("webPin", true) && request->getParam("webPin", true)->value().length() > 0) {
+        strlcpy(Settings::webPin, request->getParam("webPin", true)->value().c_str(), sizeof(Settings::webPin));
+    }
+
     Settings::save();
     request->send(200, "text/plain", "Saved. Restarting...");
     scheduleRestart();
@@ -153,6 +179,10 @@ void WebHandler::handleConfigPost(AsyncWebServerRequest *request) {
  * POST /api/restart
 */
 void WebHandler::handleRestart(AsyncWebServerRequest *request) {
+    if (!authorized(request)) {
+        request->send(401, "text/plain", "PIN required");
+        return;
+    }
     request->send(200, "text/plain", "Restarting...");
     scheduleRestart();
 }
@@ -161,6 +191,10 @@ void WebHandler::handleRestart(AsyncWebServerRequest *request) {
  * POST /api/reset
 */
 void WebHandler::handleReset(AsyncWebServerRequest *request) {
+    if (!authorized(request)) {
+        request->send(401, "text/plain", "PIN required");
+        return;
+    }
     Settings::reset();
     request->send(200, "text/plain", "Settings erased. Restarting...");
     scheduleRestart();
@@ -171,8 +205,10 @@ void WebHandler::handleReset(AsyncWebServerRequest *request) {
 */
 void WebHandler::handleUpdate(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t size, bool final) {
     if (index == 0) {
+        if (!authorized(request)) return; // never start flashing without the PIN
         Update.begin(UPDATE_SIZE_UNKNOWN);
     }
+    if (!Update.isRunning()) return;
 
     if (size > 0 && !Update.hasError()) {
         Update.write(data, size);

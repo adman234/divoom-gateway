@@ -7,7 +7,7 @@
 
     /* Firmware Information */
     #define FIRMWARE_NAME    "Divoom Gateway"
-    #define FIRMWARE_VERSION "2.0.4"
+    #define FIRMWARE_VERSION "2.0.5"
 
     /* Bluetooth Configuration */
     #define BLUETOOTH_NAME   "Divoom-Gateway"

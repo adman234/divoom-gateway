@@ -82,6 +82,14 @@ footer{color:#9aa0a6;font-size:.8em;text-align:center;margin:20px 0}
 <option value="1">Only announce Divoom devices</option>
 <option value="0">Announce all discovered devices</option>
 </select>
+</section>
+
+<section>
+<h2>Security</h2>
+<label>Settings PIN <span id="pin-state" class="note"></span></label>
+<input name="webPin" type="password" maxlength="32" placeholder="(unchanged)" autocomplete="new-password">
+<p class="note">Optional. When set, changing settings, updating firmware, restarting and factory-resetting require this PIN. Leave blank to keep the current one.</p>
+<label style="display:flex;align-items:center;gap:8px;color:#f28b82"><input type="checkbox" name="webPinClear" value="1" style="width:auto"> Remove the PIN</label>
 <button type="submit">Save &amp; Restart</button>
 </section>
 </form>
@@ -109,7 +117,22 @@ footer{color:#9aa0a6;font-size:.8em;text-align:center;margin:20px 0}
 <script>
 const $=id=>document.getElementById(id);
 function toast(m){const t=$('toast');t.textContent=m;t.style.display='block';setTimeout(()=>t.style.display='none',4000)}
-function post(u){fetch(u,{method:'POST'}).then(()=>toast('OK, restarting...'))}
+let pinSet=false;
+// fetch wrapper that attaches the saved PIN and re-prompts once on 401
+function authFetch(url,opts){
+opts=opts||{};opts.headers=opts.headers||{};
+if(pinSet){const p=sessionStorage.getItem('pin')||'';opts.headers['X-Pin']=p}
+return fetch(url,opts).then(r=>{
+if(r.status===401){
+const p=prompt('Enter the settings PIN:');
+if(p===null)return r;
+sessionStorage.setItem('pin',p);opts.headers['X-Pin']=p;
+return fetch(url,opts);
+}
+return r;
+});
+}
+function post(u){authFetch(u,{method:'POST'}).then(r=>toast(r.ok?'OK, restarting...':'Wrong PIN'))}
 function fmtUp(s){const d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60);return (d?d+'d ':'')+h+'h '+m+'m'}
 function refresh(){fetch('/api/status').then(r=>r.json()).then(j=>{
 $('version').textContent='v'+j.version;
@@ -123,20 +146,22 @@ $('s-heap').textContent=Math.round(j.heap/1024)+' KB';
 $('s-uptime').textContent=fmtUp(j.uptime);
 }).catch(()=>{})}
 fetch('/api/config').then(r=>r.json()).then(j=>{
+pinSet=!!j.pinSet;
+$('pin-state').textContent=pinSet?'(currently set)':'(not set)';
 const f=document.forms.config;
-for(const k in j){if(f[k]!==undefined)f[k].value=j[k]}
+for(const k in j){if(f[k]!==undefined&&typeof j[k]!=='boolean')f[k].value=j[k]}
 });
 document.forms.config.onsubmit=e=>{
 e.preventDefault();
-fetch('/api/config',{method:'POST',body:new URLSearchParams(new FormData(e.target))})
-.then(()=>toast('Saved. Restarting...'));
+authFetch('/api/config',{method:'POST',body:new URLSearchParams(new FormData(e.target))})
+.then(r=>toast(r.ok?'Saved. Restarting...':'Wrong PIN'));
 };
 document.forms.ota.onsubmit=e=>{
 e.preventDefault();
 const f=new FormData(e.target);
 if(!f.get('firmware')||!f.get('firmware').name)return toast('Choose a .bin file first');
 toast('Uploading...');
-fetch('/update',{method:'POST',body:f}).then(r=>r.text()).then(t=>toast(t)).catch(()=>toast('Upload failed'));
+authFetch('/update',{method:'POST',body:f}).then(r=>r.text()).then(t=>toast(t)).catch(()=>toast('Upload failed'));
 };
 refresh();setInterval(refresh,5000);
 </script>

@@ -26,6 +26,7 @@
             static void handleNotFound(AsyncWebServerRequest *request);
 
             static void scheduleRestart(void);
+            static bool authorized(AsyncWebServerRequest *request);
             static String jsonEscape(const char* value);
     };
 #endif

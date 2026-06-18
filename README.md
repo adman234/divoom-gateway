@@ -152,6 +152,18 @@ with no interpolation. Details in [this comment](https://github.com/d03n3rfr1tz3
 **Web installer can't find the port** — Use a USB *data* cable, install the CP210x/CH340 driver for your
 board, and use Chrome or Edge (Web Serial isn't available in Firefox/Safari).
 
+**Gateway web page sometimes hangs / "took too long to respond"** — This is almost always WiFi modem
+power-save, which firmware ≥ v2.0.5 disables (`WiFi.setSleep(false)`). If it still happens after updating:
+give the gateway a DHCP reservation / static IP on your router, keep it on 2.4 GHz with a decent signal
+(the status page shows RSSI — aim for better than −75 dBm), and avoid hammering it with both the web UI and
+Home Assistant at the same instant, since the original ESP32 runs WiFi and Bluetooth Classic on one radio.
+A power-cycle clears a wedged radio.
+
+**Protecting the settings page** — Set a PIN under *Security* on the gateway's web page. Once set, saving
+settings, OTA updates, restart and factory reset require it (the browser prompts and remembers it for the
+session). To remove it, tick *Remove the PIN* and save. Note this guards configuration changes, not a login
+wall — keep the gateway on a trusted network.
+
 ## Credits
 
 All protocol reverse-engineering credit goes to [@d03n3rfr1tz3](https://github.com/d03n3rfr1tz3) and the

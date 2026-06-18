@@ -39,6 +39,9 @@ void Settings::load(void) {
     strlcpy(mqttPrefix, value.c_str(), sizeof(mqttPrefix));
 
     btFilter = preferences.getBool("btFilter", BLUETOOTH_FILTER);
+
+    value = preferences.getString("webPin", "");
+    strlcpy(webPin, value.c_str(), sizeof(webPin));
 }
 
 /**
@@ -56,6 +59,7 @@ void Settings::save(void) {
     preferences.putString("mqttPass", mqttPass);
     preferences.putString("mqttPrefix", mqttPrefix);
     preferences.putBool("btFilter", btFilter);
+    preferences.putString("webPin", webPin);
 }
 
 /**
@@ -78,6 +82,13 @@ bool Settings::hasWifi(void) {
 */
 bool Settings::hasMqtt(void) {
     return strlen(mqttHost) > 0;
+}
+
+/**
+ * checks if a web interface PIN is configured
+*/
+bool Settings::hasPin(void) {
+    return strlen(webPin) > 0;
 }
 
 /**
