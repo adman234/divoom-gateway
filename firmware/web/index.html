@@ -137,9 +137,11 @@ function fmtUp(s){const d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.
 function refresh(){fetch('/api/status').then(r=>r.json()).then(j=>{
 $('version').textContent='v'+j.version;
 $('f-version').textContent='v'+j.version;
-$('s-wifi').innerHTML=j.wifi.connected?'<span class="ok">'+j.wifi.ssid+' ('+j.wifi.rssi+' dBm)</span>':(j.wifi.ap?'<span class="bad">access point mode</span>':'<span class="bad">disconnected</span>');
+const w=$('s-wifi');
+if(j.wifi.connected){w.className='ok';w.textContent=j.wifi.ssid+' ('+j.wifi.rssi+' dBm)'}
+else{w.className='bad';w.textContent=j.wifi.ap?'access point mode':'disconnected'}
 $('s-ip').textContent=j.wifi.ip;
-$('s-bt').innerHTML=j.bluetooth.connected?'<span class="ok">connected</span>':'<span>not connected</span>';
+const b=$('s-bt');b.className=j.bluetooth.connected?'ok':'';b.textContent=j.bluetooth.connected?'connected':'not connected';
 $('s-devices').textContent=j.bluetooth.devices.length?j.bluetooth.devices.map(d=>d.name+' ('+d.mac+')').join(', '):'none yet';
 $('s-mqtt').innerHTML=j.mqtt.configured?(j.mqtt.connected?'<span class="ok">connected</span>':'<span class="bad">disconnected</span>'):'<span>not configured</span>';
 $('s-heap').textContent=Math.round(j.heap/1024)+' KB';
