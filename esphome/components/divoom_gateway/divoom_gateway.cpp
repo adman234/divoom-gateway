@@ -45,9 +45,11 @@ void DivoomGatewayComponent::setup() {
 
   // create the parse queue/task before the TCP listener starts accepting, so
   // a client that connects immediately never races an as-yet-nonexistent queue
+  ESP_LOGI(TAG, "free heap before TCP queue alloc: %u bytes", ESP.getFreeHeap());
   this->tcp_parse_queue_ = xQueueCreate(3, sizeof(DataPacket *));
   if (this->tcp_parse_queue_ == nullptr) {
-    ESP_LOGE(TAG, "failed to create TCP parse queue - component will not run (loop() disabled)");
+    ESP_LOGE(TAG, "failed to create TCP parse queue (free heap %u bytes) - component will not run (loop() disabled)",
+             ESP.getFreeHeap());
     this->mark_failed();
     return;
   }
