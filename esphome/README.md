@@ -64,10 +64,30 @@ the same way as ESP Web Tools did with the standalone firmware, via `improv_seri
   (clamped to the packet struct's buffer size before the `memcpy`).
 - No PSRAM-aware allocation for TCP receive buffers (`MALLOC`/`ps_malloc` in the original) -
   plain heap `malloc` is used, since the base `esp32dev` board this targets has no PSRAM.
-- Not yet validated with `esphome compile` - this sandbox has no network access to install the
-  `esphome` PyPI package, so verification so far is: Python/YAML syntax checks, manual
-  declared-vs-defined method cross-check, and brace-balance checks. Run `esphome compile
-  divoom-gateway.yaml` yourself before flashing to catch anything a real ESPHome/PlatformIO
-  toolchain would catch that I couldn't (ESPHome internal API names can drift between
-  versions - `WiFi.getMode()`/`App.get_name()`/etc. are the most likely spots to need a
-  small fixup).
+- Verification here (no network access to install `esphome` in this sandbox) has been limited
+  to Python/YAML syntax checks, a manual declared-vs-defined method cross-check, and
+  brace-balance checks - not a real `esphome compile`. The first real build (see
+  Troubleshooting below) already caught something those checks couldn't.
+
+## Troubleshooting
+
+- **`fatal error: ESPmDNS.h: No such file or directory`** (or the same for `WiFi.h`,
+  `IPv6Address.h`, or other `arduino-esp32/libraries/*` headers): as of ESPHome 2026.2.0, ESP32
+  Arduino builds now compile Arduino as an ESP-IDF component, and all Arduino libraries are
+  disabled by default to cut build time - an external component has to explicitly re-enable
+  each one it uses via `cg.add_library("Name", None)` in `__init__.py`. This component already
+  does that for `WiFi`, `ESPmDNS`, and `BluetoothSerial`; if you hit this on a header not listed
+  there, add the matching `cg.add_library(...)` call for it.
+- **A similar "no such file" error for a Bluetooth/Bluedroid header** (`esp_spp_api.h`,
+  `esp_bt.h`, `esp_gap_bt_api.h`): a related ESPHome 2026.2.0 change excludes unused built-in
+  ESP-IDF components by default. If `BluetoothSerial` being re-enabled doesn't already pull in
+  the underlying `bt` IDF component, add this to your device YAML as a workaround:
+  ```yaml
+  esp32:
+    framework:
+      advanced:
+        include_builtin_idf_components:
+          - bt
+  ```
+  (Not added to `divoom-gateway.yaml` up front since it wasn't confirmed necessary - add it only
+  if you actually hit this error.)

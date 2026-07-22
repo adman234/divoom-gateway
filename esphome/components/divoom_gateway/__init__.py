@@ -50,5 +50,11 @@ async def to_code(config):
     if CONF_PIN in config:
         cg.add(var.set_pin(config[CONF_PIN]))
 
+    # ESPHome 2026.2+ disables Arduino libraries by default on ESP32 Arduino
+    # builds (arduino-as-an-esp-idf-component); anything we #include that
+    # lives under arduino-esp32/libraries/* has to be re-enabled explicitly,
+    # or its headers aren't on the include path.
+    cg.add_library("WiFi", None)  # also pulls in headers AsyncTCP needs (IPv6Address.h)
+    cg.add_library("ESPmDNS", None)
     cg.add_library("BluetoothSerial", None)
     cg.add_library("esphome/AsyncTCP-esphome", "^2.1.4")
