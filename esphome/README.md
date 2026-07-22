@@ -94,11 +94,15 @@ this branch or hit a variant of either:
   and `BluetoothSerial`. If you hit this on a header not covered by those three, add the
   matching `cg.add_library(...)` call yourself.
 - **`fatal error: esp_spp_api.h`/`esp_bt.h`/`esp_gap_bt_api.h`: "Missing ... found in component(s)
-  bt(...)"**: unused built-in ESP-IDF components are now excluded by default too, and nothing
-  else in a typical config pulls in the Bluetooth Classic (`bt`) component. Fixed by calling
-  `esphome.components.esp32.include_builtin_idf_component("bt")` in `to_code()` (wrapped in a
-  try/except `ImportError` since this function doesn't exist on older ESPHome versions that
-  don't need it).
+  bt(...)"**: the `bt` IDF component isn't in ESPHome's excluded-by-default list at all (that
+  was a wrong diagnosis on an earlier version of this file - `include_builtin_idf_component("bt")`
+  was a no-op, since "bt" was never excluded). The real gate is the ESP-IDF Kconfig option
+  `CONFIG_BT_ENABLED`: ESPHome only turns it on when a BLE component (`esp32_ble`,
+  `bluetooth_proxy`, etc.) asks for it, and nothing does here since this component talks to
+  `BluetoothSerial` directly. Fixed by calling `esphome.components.esp32.add_idf_sdkconfig_option`
+  in `to_code()` for `CONFIG_BT_ENABLED`, `CONFIG_BT_BLUEDROID_ENABLED`, `CONFIG_BT_CLASSIC_ENABLED`,
+  and `CONFIG_BT_SPP_ENABLED` (confirmed against ESP-IDF 5.5's actual `components/bt/host/
+  bluedroid/Kconfig.in` dependency chain, not just inferred).
 - **`fatal error: IPv6Address.h` from `AsyncTCP-esphome`**: this is what led to dropping AsyncTCP
   entirely in favor of plain BSD sockets (see Known deviations above) - pull latest if you're on
   an older copy of this branch.

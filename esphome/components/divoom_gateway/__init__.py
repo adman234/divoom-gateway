@@ -4,11 +4,9 @@ from esphome.const import CONF_ID
 from esphome.core import CORE
 
 try:
-    # only present on ESPHome versions that exclude unused built-in ESP-IDF
-    # components by default (2026.2.0+); older versions don't need this call
-    from esphome.components.esp32 import include_builtin_idf_component
+    from esphome.components.esp32 import add_idf_sdkconfig_option
 except ImportError:
-    include_builtin_idf_component = None
+    add_idf_sdkconfig_option = None
 
 CODEOWNERS = ["@adman234"]
 DEPENDENCIES = ["wifi", "mdns"]
@@ -66,8 +64,17 @@ async def to_code(config):
     cg.add_library("ESPmDNS", None)
     cg.add_library("BluetoothSerial", None)
 
-    # same 2026.2.0 change also excludes unused built-in ESP-IDF components
-    # by default; Bluetooth Classic (esp_spp_api.h) lives in the "bt" IDF
-    # component, which nothing else pulls in unless something asks for it
-    if include_builtin_idf_component is not None:
-        include_builtin_idf_component("bt")
+    # The "bt" IDF component itself isn't excluded by ESPHome by default (it's
+    # not in DEFAULT_EXCLUDED_IDF_COMPONENTS), but its contents - including
+    # esp_spp_api.h - are compiled in only when Bluetooth is actually enabled
+    # via Kconfig. ESPHome only sets CONFIG_BT_ENABLED when a BLE component
+    # (esp32_ble, bluetooth_proxy, etc.) asks for it; nothing does that here
+    # since we talk to BluetoothSerial directly, so set the sdkconfig options
+    # arduino-esp32's BluetoothSerial itself requires (see the #error guards
+    # in the standalone firmware's hardware/bluetoothctl.h for the same list).
+    if add_idf_sdkconfig_option is not None:
+        add_idf_sdkconfig_option("CONFIG_BT_ENABLED", True)
+        add_idf_sdkconfig_option("CONFIG_BT_BLUEDROID_ENABLED", True)
+        add_idf_sdkconfig_option("CONFIG_BLUEDROID_ENABLED", True)
+        add_idf_sdkconfig_option("CONFIG_BT_CLASSIC_ENABLED", True)
+        add_idf_sdkconfig_option("CONFIG_BT_SPP_ENABLED", True)
