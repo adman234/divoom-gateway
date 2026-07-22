@@ -78,34 +78,30 @@ the same way as ESP Web Tools did with the standalone firmware, via `improv_seri
   plain heap `malloc` is used, since the base `esp32dev` board this targets has no PSRAM.
 - Verification here (no network access to install `esphome` in this sandbox) has been limited
   to Python/YAML syntax checks, a manual declared-vs-defined method cross-check, and
-  brace-balance checks - not a real `esphome compile`. Real builds so far have caught two things
-  those checks couldn't (see Troubleshooting below) - both fixed, but this is still unflashed.
+  brace-balance checks - not a real `esphome compile`. Real builds so far have caught three
+  things those checks couldn't (see Troubleshooting below) - all fixed, but this is still
+  unflashed, so treat it as still likely to have another rough edge or two.
 
 ## Troubleshooting
 
-- **`fatal error: ESPmDNS.h: No such file or directory`** (or the same for `WiFi.h` or other
-  `arduino-esp32/libraries/*` headers): as of ESPHome 2026.2.0, ESP32 Arduino builds compile
-  Arduino as an ESP-IDF component, and all Arduino libraries are disabled by default to cut
-  build time - an external component has to explicitly re-enable each one it uses via
-  `cg.add_library("Name", None)` in `__init__.py`. This component already does that for `WiFi`,
-  `ESPmDNS`, and `BluetoothSerial`; if you hit this on a header not listed there, add the
-  matching `cg.add_library(...)` call for it.
-- **`fatal error: IPv6Address.h: No such file or directory` from `AsyncTCP-esphome`**: this is
-  what led to dropping AsyncTCP entirely (see Known deviations above) - if you're on a version
-  of this branch from before that change, pull latest.
-- If you hit an ESP-IDF "no such file" error for a Bluetooth/Bluedroid header (`esp_spp_api.h`,
-  `esp_bt.h`, `esp_gap_bt_api.h`): a related ESPHome 2026.2.0 change excludes unused built-in
-  ESP-IDF components by default. If `BluetoothSerial` being re-enabled doesn't already pull in
-  the underlying `bt` IDF component, add this to your device YAML as a workaround:
-  ```yaml
-  esp32:
-    framework:
-      advanced:
-        include_builtin_idf_components:
-          - bt
-  ```
-  (Not added to `divoom-gateway.yaml` up front since it hasn't been confirmed necessary - add it
-  only if you actually hit this error.)
+Two ESPHome 2026.2.0 changes bit this component on the first few real build attempts - both are
+now handled automatically in `__init__.py`, described here in case you're on an older copy of
+this branch or hit a variant of either:
+
+- **`fatal error: ESPmDNS.h`/`WiFi.h`/other `arduino-esp32/libraries/*` header**: ESP32 Arduino
+  builds now compile Arduino as an ESP-IDF component with all Arduino libraries disabled by
+  default. Fixed by `cg.add_library("Name", None)` calls in `to_code()` for `WiFi`, `ESPmDNS`,
+  and `BluetoothSerial`. If you hit this on a header not covered by those three, add the
+  matching `cg.add_library(...)` call yourself.
+- **`fatal error: esp_spp_api.h`/`esp_bt.h`/`esp_gap_bt_api.h`: "Missing ... found in component(s)
+  bt(...)"**: unused built-in ESP-IDF components are now excluded by default too, and nothing
+  else in a typical config pulls in the Bluetooth Classic (`bt`) component. Fixed by calling
+  `esphome.components.esp32.include_builtin_idf_component("bt")` in `to_code()` (wrapped in a
+  try/except `ImportError` since this function doesn't exist on older ESPHome versions that
+  don't need it).
+- **`fatal error: IPv6Address.h` from `AsyncTCP-esphome`**: this is what led to dropping AsyncTCP
+  entirely in favor of plain BSD sockets (see Known deviations above) - pull latest if you're on
+  an older copy of this branch.
 - **Build cache serving a stale copy of this branch**: ESPHome's git-sourced
   `external_components:` default to a 1-day refresh. `divoom-gateway.yaml` already sets
   `refresh: 0s` to always re-fetch; if a fix still doesn't seem to take effect, clean build files
