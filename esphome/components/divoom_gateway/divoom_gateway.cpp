@@ -139,7 +139,7 @@ void DivoomGatewayComponent::bt_discover_(int timeout_ms) {
       this->discovered_.push_back({std::string(device->getAddress().toString().c_str()), name});
     }
 
-    this->advertise_(device->getAddress().getNative(), name, supported);
+    this->advertise_(*device->getAddress().getNative(), name, supported);
     vTaskDelay(pdMS_TO_TICKS(25));
   }
 
@@ -148,7 +148,8 @@ void DivoomGatewayComponent::bt_discover_(int timeout_ms) {
 
 bool DivoomGatewayComponent::bt_connect_(const uint8_t address[6], uint16_t channel) {
   if (this->bt_connected_) this->bt_disconnect_();
-  if (!this->pin_.empty()) this->serial_bt_.setPin(this->pin_.c_str());
+  if (!this->pin_.empty())
+    this->serial_bt_.setPin(this->pin_.c_str(), static_cast<uint8_t>(this->pin_.size()));
   delay(10);
 
   esp_bd_addr_t bytes;
