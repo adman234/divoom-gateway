@@ -35,7 +35,9 @@ DivoomGatewayComponent::DivoomGatewayComponent() {
 }
 
 void DivoomGatewayComponent::setup() {
-  this->serial_bt_.begin(App.get_name().c_str(), true);
+  if (!this->serial_bt_.begin(App.get_name().c_str(), true)) {
+    ESP_LOGE(TAG, "BluetoothSerial.begin() failed - Bluetooth Classic will not work");
+  }
   this->serial_bt_.setTimeout(1000);
   this->serial_bt_.register_callback(&DivoomGatewayComponent::spp_event_trampoline_);
 
@@ -61,11 +63,14 @@ void DivoomGatewayComponent::setup() {
 }
 
 void DivoomGatewayComponent::loop() {
-  // Bluetooth inquiry and WiFi scanning share one radio: back off while our
-  // AP/captive portal is up, mirroring the standalone firmware's coexistence
-  // workaround, otherwise WiFi scans during provisioning come up empty.
-  bool ap_active = (WiFi.getMode() & WIFI_MODE_AP) != 0;
-  if (ap_active) return;
+  // Bluetooth inquiry and WiFi scanning share one radio: back off until WiFi
+  // has actually joined a network, mirroring the standalone firmware's
+  // coexistence workaround (there, checking "is our AP up" was equivalent,
+  // since that firmware's own WiFi handler tore the AP down on connect - but
+  // ESPHome's ap:/captive_portal: fallback commonly stays up in parallel
+  // (WIFI_MODE_APSTA) even after joining, so that check would never clear
+  // here and Bluetooth discovery would never run at all).
+  if (WiFi.status() != WL_CONNECTED) return;
 
   if (millis() - this->bt_discover_timer_ > 15000) {
     this->bt_discover_timer_ = millis();
@@ -107,6 +112,7 @@ void DivoomGatewayComponent::bt_task_() {
 }
 
 void DivoomGatewayComponent::bt_discover_(int timeout_ms) {
+  ESP_LOGD(TAG, "starting Bluetooth discovery scan");
   BTScanResults *devices = this->serial_bt_.discover(timeout_ms);
   if (devices == nullptr) {
     // matches the standalone firmware: some esp32-arduino Bluedroid versions
@@ -144,6 +150,8 @@ void DivoomGatewayComponent::bt_discover_(int timeout_ms) {
   }
 
   this->serial_bt_.discoverClear();
+  ESP_LOGD(TAG, "Bluetooth discovery scan finished: %d device(s) seen, %u kept", devices->getCount(),
+           static_cast<unsigned>(this->discovered_.size()));
 }
 
 bool DivoomGatewayComponent::bt_connect_(const uint8_t address[6], uint16_t channel) {
