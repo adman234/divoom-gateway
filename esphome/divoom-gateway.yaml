@@ -1,0 +1,58 @@
+esphome:
+  name: divoom-gateway
+  friendly_name: Divoom Gateway
+
+esp32:
+  board: esp32dev
+  framework:
+    # BluetoothSerial (Bluetooth Classic / SPP) is only available under the
+    # Arduino framework, not esp-idf. Bluetooth Classic itself only exists on
+    # the original dual-core ESP32 - not S2/S3/C3/C6.
+    type: arduino
+
+external_components:
+  - source:
+      type: git
+      url: https://github.com/adman234/divoom-gateway
+      ref: esphome
+    components: [divoom_gateway]
+
+logger:
+api:
+  encryption:
+    key: !secret api_encryption_key
+ota:
+  - platform: esphome
+    password: !secret ota_password
+improv_serial:
+mdns:
+web_server:
+  port: 80
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: "Divoom Gateway Fallback"
+    password: !secret ap_password
+
+captive_portal:
+
+divoom_gateway:
+  id: gateway
+  tcp_port: 7777
+  bluetooth_filter: true
+  # pin: "0000"  # uncomment if your Divoom device requires an SPP pairing PIN
+
+# Optional: surface gateway status as native Home Assistant entities instead
+# of the standalone firmware's custom web status page.
+binary_sensor:
+  - platform: template
+    name: "Bluetooth Connected"
+    lambda: return id(gateway).get_bluetooth_connected();
+
+sensor:
+  - platform: template
+    name: "Discovered Divoom Devices"
+    lambda: return id(gateway).get_discovered_devices().size();
+    update_interval: 30s
