@@ -2,7 +2,6 @@
 
 #include <ESPmDNS.h>
 #include <BluetoothSerial.h>
-#include <AsyncTCP.h>
 #include <esp_spp_api.h>
 
 #include <string>
@@ -22,7 +21,7 @@ struct DiscoveredDevice {
 };
 
 // sized like the upstream firmware's data_packet_t (util.h): one TCP MSS
-// worth of payload, since that's the largest single AsyncTCP onData() call
+// worth of payload, since that's the largest single recv() call we do
 struct DataPacket {
   uint8_t data[CONFIG_LWIP_TCP_MSS];
   size_t size;
@@ -65,18 +64,17 @@ class DivoomGatewayComponent : public Component {
   static void spp_event_trampoline_(esp_spp_cb_event_t event, esp_spp_cb_param_t *param);
   static void bt_task_trampoline_(void *arg);
 
-  // --- TCP passthrough ---
+  // --- TCP passthrough (plain BSD/lwIP sockets - see README for why this
+  // isn't built on AsyncTCP like the standalone firmware was) ---
   void start_tcp_server_();
-  void on_tcp_client_(AsyncClient *client);
+  static void tcp_socket_task_trampoline_(void *arg);
+  void tcp_socket_task_();
+  void tcp_accept_client_();
+  void tcp_close_client_(size_t index);
+  void tcp_handle_client_readable_(size_t index);
   void tcp_write_(const uint8_t *buffer, size_t size);
   void tcp_parse_(const uint8_t *buffer, size_t size);
-  static void tcp_client_connect_trampoline_(void *arg, AsyncClient *client);
-  static void tcp_client_data_trampoline_(void *arg, AsyncClient *client, void *data, size_t size);
-  static void tcp_client_disconnect_trampoline_(void *arg, AsyncClient *client);
-  static void tcp_client_error_trampoline_(void *arg, AsyncClient *client, int8_t error);
-  static void tcp_client_timeout_trampoline_(void *arg, AsyncClient *client, uint32_t time);
   static void tcp_parse_task_trampoline_(void *arg);
-  void tcp_clear_clients_();
 
   // relays a byte buffer to every connected TCP client (data coming back
   // from the Bluetooth device)
@@ -96,8 +94,9 @@ class DivoomGatewayComponent : public Component {
   TaskHandle_t bt_task_handle_{nullptr};
   std::vector<DiscoveredDevice> discovered_;
 
-  AsyncServer *tcp_server_{nullptr};
-  AsyncClient *tcp_clients_[TCP_MAX_CLIENTS]{};
+  int tcp_listen_fd_{-1};
+  int tcp_client_fds_[TCP_MAX_CLIENTS];
+  TaskHandle_t tcp_socket_task_handle_{nullptr};
   QueueHandle_t tcp_parse_queue_{nullptr};
   TaskHandle_t tcp_parse_task_handle_{nullptr};
 

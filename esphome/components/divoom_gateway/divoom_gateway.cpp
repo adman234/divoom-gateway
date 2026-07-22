@@ -4,7 +4,13 @@
 #include <WiFi.h>
 #include <esp_task_wdt.h>
 
+#include <fcntl.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <unistd.h>
+
 #include <algorithm>
+#include <cerrno>
 #include <cstring>
 
 #include "esphome/core/application.h"
@@ -23,15 +29,18 @@ static const size_t FRAME_CHUNK_ANIMATION[] = {210, 213, 215};
 
 DivoomGatewayComponent *DivoomGatewayComponent::instance_ = nullptr;
 
-DivoomGatewayComponent::DivoomGatewayComponent() { instance_ = this; }
+DivoomGatewayComponent::DivoomGatewayComponent() {
+  instance_ = this;
+  for (auto &fd : this->tcp_client_fds_) fd = -1;
+}
 
 void DivoomGatewayComponent::setup() {
   this->serial_bt_.begin(App.get_name().c_str(), true);
   this->serial_bt_.setTimeout(1000);
   this->serial_bt_.register_callback(&DivoomGatewayComponent::spp_event_trampoline_);
 
-  this->start_tcp_server_();
-
+  // create the parse queue/task before the TCP listener starts accepting, so
+  // a client that connects immediately never races an as-yet-nonexistent queue
   this->tcp_parse_queue_ = xQueueCreate(3, sizeof(DataPacket *));
   if (this->tcp_parse_queue_ == nullptr) {
     ESP_LOGE(TAG, "failed to create TCP parse queue");
@@ -45,7 +54,10 @@ void DivoomGatewayComponent::setup() {
   if (task_result != pdPASS) {
     ESP_LOGE(TAG, "failed to start TCP parse task, restarting");
     ESP.restart();
+    return;
   }
+
+  this->start_tcp_server_();
 }
 
 void DivoomGatewayComponent::loop() {
@@ -189,53 +201,120 @@ void DivoomGatewayComponent::spp_event_trampoline_(esp_spp_cb_event_t event, esp
 }
 
 // --- TCP passthrough ---
-// Ported from the standalone firmware's input/tcp.cpp. Wire protocol is
-// unchanged: 0x69+MAC+port = connect, 0x96+MAC = disconnect, 0x01...0x02 =
-// raw Divoom payload to relay to/from the Bluetooth device.
+// Ported from the standalone firmware's input/tcp.cpp, but on plain BSD/lwIP
+// sockets instead of AsyncTCP: ESPHome's own web_server_base component no
+// longer uses AsyncTCP on ESP32 either (it switched to a native ESP-IDF
+// socket implementation), and the AsyncTCP-esphome library's expectations
+// around Arduino-as-an-esp-idf-component headers (IPv6Address.h) don't line
+// up cleanly there anymore. Wire protocol is unchanged: 0x69+MAC+port =
+// connect, 0x96+MAC = disconnect, 0x01...0x02 = raw Divoom payload to relay
+// to/from the Bluetooth device.
 
 void DivoomGatewayComponent::start_tcp_server_() {
-  this->tcp_server_ = new AsyncServer(this->tcp_port_);
-  this->tcp_server_->onClient(&DivoomGatewayComponent::tcp_client_connect_trampoline_, this);
-  this->tcp_server_->begin();
+  this->tcp_listen_fd_ = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+  if (this->tcp_listen_fd_ < 0) {
+    ESP_LOGE(TAG, "failed to create TCP listen socket (errno %d)", errno);
+    this->mark_failed();
+    return;
+  }
+
+  int reuse = 1;
+  setsockopt(this->tcp_listen_fd_, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+
+  sockaddr_in addr{};
+  addr.sin_family = AF_INET;
+  addr.sin_addr.s_addr = htonl(INADDR_ANY);
+  addr.sin_port = htons(this->tcp_port_);
+
+  if (bind(this->tcp_listen_fd_, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) != 0) {
+    ESP_LOGE(TAG, "failed to bind TCP port %u (errno %d)", this->tcp_port_, errno);
+    this->mark_failed();
+    return;
+  }
+  if (listen(this->tcp_listen_fd_, TCP_MAX_CLIENTS) != 0) {
+    ESP_LOGE(TAG, "failed to listen on TCP port %u (errno %d)", this->tcp_port_, errno);
+    this->mark_failed();
+    return;
+  }
+
+  int flags = fcntl(this->tcp_listen_fd_, F_GETFL, 0);
+  fcntl(this->tcp_listen_fd_, F_SETFL, flags | O_NONBLOCK);
+
+  BaseType_t task_result = xTaskCreatePinnedToCore(&DivoomGatewayComponent::tcp_socket_task_trampoline_,
+                                                    "DivoomTcpSocket", 5120, this, 1,
+                                                    &this->tcp_socket_task_handle_, 1);
+  if (task_result != pdPASS) {
+    ESP_LOGE(TAG, "failed to start TCP socket task, restarting");
+    ESP.restart();
+  }
 }
 
-void DivoomGatewayComponent::tcp_client_connect_trampoline_(void *arg, AsyncClient *client) {
-  static_cast<DivoomGatewayComponent *>(arg)->on_tcp_client_(client);
+void DivoomGatewayComponent::tcp_socket_task_trampoline_(void *arg) {
+  static_cast<DivoomGatewayComponent *>(arg)->tcp_socket_task_();
 }
 
-void DivoomGatewayComponent::on_tcp_client_(AsyncClient *client) {
-  client->onData(&DivoomGatewayComponent::tcp_client_data_trampoline_, this);
-  client->onDisconnect(&DivoomGatewayComponent::tcp_client_disconnect_trampoline_, this);
-  client->onTimeout(&DivoomGatewayComponent::tcp_client_timeout_trampoline_, this);
-  client->onError(&DivoomGatewayComponent::tcp_client_error_trampoline_, this);
+void DivoomGatewayComponent::tcp_socket_task_() {
+  esp_task_wdt_add(nullptr);
 
-  int8_t index = -1;
+  for (;;) {
+    fd_set read_fds;
+    FD_ZERO(&read_fds);
+    FD_SET(this->tcp_listen_fd_, &read_fds);
+    int max_fd = this->tcp_listen_fd_;
+
+    for (size_t i = 0; i < TCP_MAX_CLIENTS; i++) {
+      if (this->tcp_client_fds_[i] < 0) continue;
+      FD_SET(this->tcp_client_fds_[i], &read_fds);
+      max_fd = std::max(max_fd, this->tcp_client_fds_[i]);
+    }
+
+    timeval timeout{.tv_sec = 0, .tv_usec = 100000};
+    int ready = select(max_fd + 1, &read_fds, nullptr, nullptr, &timeout);
+
+    if (ready > 0) {
+      if (FD_ISSET(this->tcp_listen_fd_, &read_fds)) this->tcp_accept_client_();
+
+      for (size_t i = 0; i < TCP_MAX_CLIENTS; i++) {
+        if (this->tcp_client_fds_[i] < 0) continue;
+        if (FD_ISSET(this->tcp_client_fds_[i], &read_fds)) this->tcp_handle_client_readable_(i);
+      }
+    }
+
+    esp_task_wdt_reset();
+  }
+}
+
+void DivoomGatewayComponent::tcp_accept_client_() {
+  int fd = accept(this->tcp_listen_fd_, nullptr, nullptr);
+  if (fd < 0) return;
+
+  int flags = fcntl(fd, F_GETFL, 0);
+  fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+
+  int index = -1;
   for (size_t i = 0; i < TCP_MAX_CLIENTS; i++) {
-    if (this->tcp_clients_[i] != nullptr) continue;
+    if (this->tcp_client_fds_[i] >= 0) continue;
     index = i;
     break;
   }
 
   if (index < 0) {
-    this->tcp_clear_clients_();
+    // all slots full: evict the oldest connection to make room, matching
+    // the standalone firmware's fallback behavior
+    this->tcp_close_client_(0);
     index = 0;
   }
-  this->tcp_clients_[index] = client;
+
+  this->tcp_client_fds_[index] = fd;
 }
 
-void DivoomGatewayComponent::tcp_clear_clients_() {
-  for (size_t i = 0; i < TCP_MAX_CLIENTS; i++) {
-    if (this->tcp_clients_[i] == nullptr) continue;
-    AsyncClient *client = this->tcp_clients_[i];
-    this->tcp_clients_[i] = nullptr;
-    client->abort();
-    delete client;
-  }
+void DivoomGatewayComponent::tcp_close_client_(size_t index) {
+  if (this->tcp_client_fds_[index] < 0) return;
+  close(this->tcp_client_fds_[index]);
+  this->tcp_client_fds_[index] = -1;
 }
 
-void DivoomGatewayComponent::tcp_client_data_trampoline_(void *arg, AsyncClient *client, void *data, size_t size) {
-  auto *self = static_cast<DivoomGatewayComponent *>(arg);
-
+void DivoomGatewayComponent::tcp_handle_client_readable_(size_t index) {
   auto *packet = static_cast<DataPacket *>(malloc(sizeof(DataPacket)));
   if (packet == nullptr) {
     ESP_LOGE(TAG, "out of memory handling TCP data, restarting");
@@ -243,44 +322,16 @@ void DivoomGatewayComponent::tcp_client_data_trampoline_(void *arg, AsyncClient 
     return;
   }
 
-  packet->size = std::min(size, sizeof(packet->data));
-  memcpy(packet->data, data, packet->size);
-
-  if (xQueueSend(self->tcp_parse_queue_, &packet, pdMS_TO_TICKS(25)) != pdPASS) {
+  ssize_t received = recv(this->tcp_client_fds_[index], packet->data, sizeof(packet->data), 0);
+  if (received <= 0) {
     free(packet);
+    if (received == 0 || (errno != EWOULDBLOCK && errno != EAGAIN)) this->tcp_close_client_(index);
+    return;
   }
-}
 
-void DivoomGatewayComponent::tcp_client_disconnect_trampoline_(void *arg, AsyncClient *client) {
-  auto *self = static_cast<DivoomGatewayComponent *>(arg);
-  for (size_t i = 0; i < TCP_MAX_CLIENTS; i++) {
-    if (self->tcp_clients_[i] != client) continue;
-    self->tcp_clients_[i] = nullptr;
-    client->close();
-    delete client;
-    break;
-  }
-}
-
-void DivoomGatewayComponent::tcp_client_error_trampoline_(void *arg, AsyncClient *client, int8_t error) {
-  auto *self = static_cast<DivoomGatewayComponent *>(arg);
-  for (size_t i = 0; i < TCP_MAX_CLIENTS; i++) {
-    if (self->tcp_clients_[i] != client) continue;
-    self->tcp_clients_[i] = nullptr;
-    client->abort();
-    delete client;
-    break;
-  }
-}
-
-void DivoomGatewayComponent::tcp_client_timeout_trampoline_(void *arg, AsyncClient *client, uint32_t time) {
-  auto *self = static_cast<DivoomGatewayComponent *>(arg);
-  for (size_t i = 0; i < TCP_MAX_CLIENTS; i++) {
-    if (self->tcp_clients_[i] != client) continue;
-    self->tcp_clients_[i] = nullptr;
-    client->abort();
-    delete client;
-    break;
+  packet->size = static_cast<size_t>(received);
+  if (xQueueSend(this->tcp_parse_queue_, &packet, pdMS_TO_TICKS(25)) != pdPASS) {
+    free(packet);
   }
 }
 
@@ -366,12 +417,28 @@ void DivoomGatewayComponent::tcp_parse_(const uint8_t *buffer, size_t size) {
 
 void DivoomGatewayComponent::tcp_write_(const uint8_t *buffer, size_t size) {
   for (size_t i = 0; i < TCP_MAX_CLIENTS; i++) {
-    AsyncClient *client = this->tcp_clients_[i];
-    if (client == nullptr || !client->connected()) continue;
+    int fd = this->tcp_client_fds_[i];
+    if (fd < 0) continue;
 
-    if (client->space() > size && client->canSend()) {
-      client->add(reinterpret_cast<const char *>(buffer), size);
-      client->send();
+    size_t sent = 0;
+    int retries = 0;
+    // best-effort with a bounded retry: a slow/stalled client shouldn't be
+    // able to block the whole gateway (this is called straight from the
+    // Bluetooth SPP receive callback), but a handful of short retries covers
+    // the common case of a momentarily full send buffer
+    while (sent < size && retries < 20) {
+      ssize_t result = send(fd, buffer + sent, size - sent, 0);
+      if (result > 0) {
+        sent += static_cast<size_t>(result);
+        continue;
+      }
+      if (result < 0 && (errno == EWOULDBLOCK || errno == EAGAIN)) {
+        retries++;
+        vTaskDelay(pdMS_TO_TICKS(5));
+        continue;
+      }
+      this->tcp_close_client_(i);
+      break;
     }
   }
 }

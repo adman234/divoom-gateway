@@ -53,8 +53,8 @@ async def to_code(config):
     # ESPHome 2026.2+ disables Arduino libraries by default on ESP32 Arduino
     # builds (arduino-as-an-esp-idf-component); anything we #include that
     # lives under arduino-esp32/libraries/* has to be re-enabled explicitly,
-    # or its headers aren't on the include path.
-    cg.add_library("WiFi", None)  # also pulls in headers AsyncTCP needs (IPv6Address.h)
+    # or its headers aren't on the include path. (No AsyncTCP dependency here
+    # - the TCP relay is plain BSD/lwIP sockets, see divoom_gateway.cpp.)
+    cg.add_library("WiFi", None)
     cg.add_library("ESPmDNS", None)
     cg.add_library("BluetoothSerial", None)
-    cg.add_library("esphome/AsyncTCP-esphome", "^2.1.4")
