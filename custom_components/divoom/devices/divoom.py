@@ -36,22 +36,21 @@ class Divoom:
         "set design": 0xbd,
     }
 
-    logger = None
-    socket = None
-    socket_errno = 0
-    message_buf = []
     escapePayload = False
-    
     host = None
     mac = None
     port = 1
 
     def __init__(self, host=None, mac=None, port=1, escapePayload=False, logger=None):
+        self.socket = None
+        self.socket_errno = 0
+        self.message_buf = []
+
         self.host = host if host else None
         self.mac = mac
         self.port = port
         self.escapePayload = escapePayload
-        
+
         if logger is None:
             logger = logging.getLogger(self.type)
         self.logger = logger
@@ -86,21 +85,30 @@ class Divoom:
                     self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP)
                     self.socket.connect((self.host, 7777))
 
-                self.socket.setblocking(0)
                 self.socket.settimeout(3)
                 self.socket_errno = 0
             except socket.error as error:
                 self.socket_errno = error.errno
+                self.socket = None
             except IOError as error:
                 if error.errno == errno.EPIPE:
                     self.socket_errno = error.errno
-        
+                self.socket = None
+
         if (self.socket != None and self.host != None):
             time.sleep(0.5)
             conn = [0x69]
             conn += bytearray.fromhex(self.mac.replace(':', ''))
             conn += [self.port]
-            self.socket.send(bytes(conn))
+            try:
+                self.socket.sendall(bytes(conn))
+            except socket.error as error:
+                self.socket_errno = error.errno
+                self.socket = None
+            except IOError as error:
+                if error.errno == errno.EPIPE:
+                    self.socket_errno = error.errno
+                self.socket = None
 
     def disconnect(self):
         """Closes the connection to the Divoom device."""
@@ -110,10 +118,10 @@ class Divoom:
             if (self.host != None):
                 conn = [0x96]
                 conn += bytearray.fromhex(self.mac.replace(':', ''))
-                self.socket.send(bytes(conn))
+                self.socket.sendall(bytes(conn))
 
             self.socket.shutdown(socket.SHUT_RDWR)
-        except:
+        except Exception:
             pass
         finally:
             self.socket.close()
@@ -122,11 +130,11 @@ class Divoom:
     def reconnect(self, skipPing=None):
         """Reconnects the connection to the Divoom device, if needed."""
 
-        if (self.socket == None):
-            self.connect()
-            time.sleep(0.5)
-
         try:
+            if (self.socket == None):
+                self.connect()
+                time.sleep(0.5)
+
             if skipPing != True:
                 ping = self.send_ping()
                 if (self.host != None and not isinstance(ping, int) and list(ping)[-1] == 0x69):
@@ -142,20 +150,23 @@ class Divoom:
         except IOError as error:
             if error.errno == errno.EPIPE:
                 self.socket_errno = error.errno
-        
+
         retries = 1
         while self.socket_errno != None and self.socket_errno > 0 and retries <= 5:
             self.logger.warning("{0}: connection lost (errno = {1}). Trying to reconnect for the {2} time.".format(self.type, self.socket_errno, retries))
             if retries > 1:
                 time.sleep(1 * retries)
-            
+
             self.disconnect()
             self.connect()
             retries += 1
 
+        if self.socket_errno != None and self.socket_errno > 0:
+            self.logger.error("{0}: giving up after {2} attempts (errno = {1}).".format(self.type, self.socket_errno, retries - 1))
+
     def receive(self, num_bytes=1024):
         """Receive n bytes of data from the Divoom device and put it in the input buffer. Returns the number of bytes received."""
-        if (self.socket == None): return
+        if (self.socket == None): return 0
 
         ready = select.select([self.socket], [], [], 0.2)
         if ready[0]:
@@ -168,15 +179,15 @@ class Divoom:
             except IOError as error:
                 if error.errno == errno.EPIPE:
                     self.socket_errno = error.errno
-        else:
-            return 0
+        return 0
 
     def send_raw(self, data):
         """Send raw data to the Divoom device."""
         if (self.socket == None): return
 
         try:
-            return self.socket.send(data)
+            self.socket.sendall(data)
+            return len(data)
         except socket.error as error:
             self.socket_errno = error.errno
             raise
@@ -210,7 +221,8 @@ class Divoom:
         if ready[1]:
             try:
                 self.logger.debug("{0} PAYLOAD OUT: {1}".format(self.type, ' '.join([hex(b) for b in request])))
-                result = self.socket.send(bytes(request))
+                self.socket.sendall(bytes(request))
+                result = len(request)
             except socket.error as error:
                 self.socket_errno = error.errno
                 raise
@@ -220,6 +232,8 @@ class Divoom:
                 raise
         else:
             self.socket_errno = 98
+            self.logger.warning("{0}: socket not writable, dropping payload".format(self.type))
+            return result
 
         if skipRead == False or (skipRead == None and self.logger.isEnabledFor(logging.DEBUG)):
             ready = select.select([self.socket], [], [], 0.2)
@@ -238,7 +252,7 @@ class Divoom:
         """Compute the payload checksum. Returned as list with LSM, MSB"""
         length = sum(payload)
         csum = []
-        csum += length.to_bytes(4 if length >= 65535 else 2, byteorder='little')
+        csum += length.to_bytes(4 if length >= 65535 else 2, byteorder='little') # Pixoo-Max expects more sometimes
         return csum
 
     def chunks(self, lst, n):
@@ -324,15 +338,20 @@ class Divoom:
                 picture_time = pair[1]
                 
                 colors = []
+                palette_index = {}
                 pixels = [None] * frameSize[0] * frameSize[1]
-                
+                pix = picture_frame.load()
+
                 for pos in itertools.product(range(frameSize[1]), range(frameSize[0])):
                     y, x = pos
-                    r, g, b, a = picture_frame.getpixel((x, y))
+                    r, g, b, a = pix[x, y]
                     color = [r, g, b] if a > 32 else [0, 0, 0]
-                    if color not in colors:
+                    color_t = (r, g, b) if a > 32 else (0, 0, 0)
+                    color_index = palette_index.get(color_t)
+                    if color_index is None:
+                        color_index = len(colors)
+                        palette_index[color_t] = color_index
                         colors.append(color)
-                    color_index = colors.index(color)
                     pixels[x + frameSize[1] * y] = color_index
                 
                 if picture_time is None: picture_time = 0
@@ -405,18 +424,23 @@ class Divoom:
                     picture_time = int(picture_time * (text_speed_fast / text_speed_medium))
                     framesCount = int(math.floor((img_width - self.screensize) / text_speed))
             if framesCount > 60: self.logger.warning("{0}: text animation is too wide and is very likely cut off.".format(self.type))
-            
+
+            pix = img.load()
             for offset in range(framesCount):
                 colors = []
+                palette_index = {}
                 pixels = [None] * frameSize[0] * frameSize[1]
 
                 for pos in itertools.product(range(frameSize[1]), range(frameSize[0])):
                     y, x = pos
-                    r, g, b, a = img.getpixel((x + (offset * text_speed), y))
+                    r, g, b, a = pix[x + (offset * text_speed), y]
                     color = [r, g, b] if a > 32 else [0, 0, 0]
-                    if color not in colors:
+                    color_t = (r, g, b) if a > 32 else (0, 0, 0)
+                    color_index = palette_index.get(color_t)
+                    if color_index is None:
+                        color_index = len(colors)
+                        palette_index[color_t] = color_index
                         colors.append(color)
-                    color_index = colors.index(color)
                     pixels[x + frameSize[1] * y] = color_index
                 
                 colorCount = len(colors)
@@ -458,17 +482,22 @@ class Divoom:
         bitsPerPixel = math.ceil(math.log(len(colors)) / math.log(2))
         if bitsPerPixel == 0:
             bitsPerPixel = 1
-        
-        pixelString = ""
+
+        mask = (1 << bitsPerPixel) - 1
+        acc = 0
+        nbits = 0
+        result = bytearray()
         for pixel in pixels:
-            pixelBits = "{0:b}".format(pixel).zfill(8)
-            pixelString += pixelBits[::-1][:bitsPerPixel:]
-        
-        result = []
-        for pixel in self.chunks(pixelString, 8):
-            result += [int(pixel[::-1], 2)]
-        
-        return result
+            acc |= (pixel & mask) << nbits
+            nbits += bitsPerPixel
+            while nbits >= 8:
+                result.append(acc & 0xff)
+                acc >>= 8
+                nbits -= 8
+        if nbits > 0:
+            result.append(acc & 0xff)
+
+        return list(result)
 
     def send_ping(self):
         """Send a ping (actually it's requesting current view) to the Divoom device to check connectivity"""
@@ -536,6 +565,7 @@ class Divoom:
         if weather == None: weather = False
         if temp == None: temp = False
         if calendar == None: calendar = False
+        if isinstance(clock, str): clock = int(clock)
 
         if twentyfour != None:
             args = [0x01 if twentyfour == True or twentyfour == 1 else 0x00]
@@ -634,6 +664,7 @@ class Divoom:
             elif value == "right": value = 2
             elif value == "up": value = 3
             elif value == "down": value = 4
+            else: return None
 
         result = None
         args = []
@@ -848,14 +879,19 @@ class Divoom:
         if weather == None: weather = 0
         if isinstance(weather, str): weather = int(weather)
 
+        unit = value[-2:]
+        number = float(value[0:-2])
+        if unit == "°F":
+            number = (number - 32) * 5 / 9
+
         args = []
-        args += int(round(float(value[0:-2]))).to_bytes(1, byteorder='big', signed=True)
+        args += int(round(number)).to_bytes(1, byteorder='big', signed=True)
         args += weather.to_bytes(1, byteorder='big')
         result = self.send_command("set temp", args)
 
-        if value[-2] == "°C":
+        if unit == "°C":
             self.send_command("set temp type", [0x00])
-        if value[-2] == "°F":
+        if unit == "°F":
             self.send_command("set temp type", [0x01])
         return result
 
