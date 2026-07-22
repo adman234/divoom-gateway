@@ -16,6 +16,10 @@ external_components:
       url: https://github.com/adman234/divoom-gateway
       ref: esphome
     components: [divoom_gateway]
+    # this branch is under active development - always re-fetch instead of
+    # using ESPHome's default 1-day cache, so `esphome run` picks up new
+    # commits immediately. Raise this (or remove it) once the branch is stable.
+    refresh: 0s
 
 logger:
 api:
