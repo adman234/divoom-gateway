@@ -35,6 +35,8 @@ DivoomGatewayComponent::DivoomGatewayComponent() {
 }
 
 void DivoomGatewayComponent::setup() {
+  ESP_LOGI(TAG, "setup() starting");
+
   if (!this->serial_bt_.begin(App.get_name().c_str(), true)) {
     ESP_LOGE(TAG, "BluetoothSerial.begin() failed - Bluetooth Classic will not work");
   }
@@ -45,7 +47,7 @@ void DivoomGatewayComponent::setup() {
   // a client that connects immediately never races an as-yet-nonexistent queue
   this->tcp_parse_queue_ = xQueueCreate(3, sizeof(DataPacket *));
   if (this->tcp_parse_queue_ == nullptr) {
-    ESP_LOGE(TAG, "failed to create TCP parse queue");
+    ESP_LOGE(TAG, "failed to create TCP parse queue - component will not run (loop() disabled)");
     this->mark_failed();
     return;
   }
@@ -60,9 +62,22 @@ void DivoomGatewayComponent::setup() {
   }
 
   this->start_tcp_server_();
+  ESP_LOGI(TAG, "setup() finished (failed = %s)", this->is_failed() ? "YES" : "NO");
 }
 
 void DivoomGatewayComponent::loop() {
+  // unmissable heartbeat, throttled to the same 15s cadence as the scan
+  // trigger below - confirms loop() is even being called and what gate it's
+  // hitting, regardless of how deep any actual Bluetooth call gets
+  bool due = millis() - this->bt_discover_timer_ > 15000;
+  static uint32_t last_heartbeat = 0;
+  if (millis() - last_heartbeat > 15000) {
+    last_heartbeat = millis();
+    ESP_LOGI(TAG, "loop() heartbeat: wifi_connected=%s bt_connected=%s bt_connecting=%s scan_due=%s",
+             WiFi.status() == WL_CONNECTED ? "YES" : "NO", this->bt_connected_ ? "YES" : "NO",
+             this->bt_connecting_ ? "YES" : "NO", due ? "YES" : "NO");
+  }
+
   // Bluetooth inquiry and WiFi scanning share one radio: back off until WiFi
   // has actually joined a network, mirroring the standalone firmware's
   // coexistence workaround (there, checking "is our AP up" was equivalent,
@@ -72,7 +87,7 @@ void DivoomGatewayComponent::loop() {
   // here and Bluetooth discovery would never run at all).
   if (WiFi.status() != WL_CONNECTED) return;
 
-  if (millis() - this->bt_discover_timer_ > 15000) {
+  if (due) {
     this->bt_discover_timer_ = millis();
 
     BaseType_t task_result = xTaskCreatePinnedToCore(&DivoomGatewayComponent::bt_task_trampoline_, "DivoomBtScan",
