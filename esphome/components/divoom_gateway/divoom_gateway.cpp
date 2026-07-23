@@ -219,6 +219,14 @@ void DivoomGatewayComponent::bt_discover_(int timeout_ms) {
     if (this->bluetooth_filter_ && !supported) continue;
 
     if (supported) {
+      // addServiceTxt() fails with "Service doesn't exist" unless the
+      // service itself was registered first - the standalone firmware does
+      // this once when WiFi connects (WifiHandler's connected() handler);
+      // this component never did, so TXT records were silently failing.
+      if (!this->mdns_service_added_) {
+        MDNS.addService("_divoom_esp32", "_tcp", this->tcp_port_);
+        this->mdns_service_added_ = true;
+      }
       MDNS.addServiceTxt("_divoom_esp32", "_tcp", "device_mac", device->getAddress().toString().c_str());
       MDNS.addServiceTxt("_divoom_esp32", "_tcp", "device_name", name.c_str());
     }

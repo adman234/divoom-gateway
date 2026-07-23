@@ -117,6 +117,7 @@ class DivoomGatewayComponent : public Component {
   uint32_t bt_discover_timer_{0};
   TaskHandle_t bt_task_handle_{nullptr};
   std::vector<DiscoveredDevice> discovered_;
+  bool mdns_service_added_{false};
 
   int tcp_listen_fd_{-1};
   int tcp_client_fds_[TCP_MAX_CLIENTS];
