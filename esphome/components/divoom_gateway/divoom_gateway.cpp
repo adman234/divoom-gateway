@@ -3,6 +3,8 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <esp_task_wdt.h>
+#include <esp_bt.h>
+#include <esp_bt_main.h>
 
 #include <fcntl.h>
 #include <sys/socket.h>
@@ -149,6 +151,12 @@ void DivoomGatewayComponent::bt_task_() {
 
 void DivoomGatewayComponent::bt_discover_(int timeout_ms) {
   ESP_LOGD(TAG, "starting Bluetooth discovery scan (requested timeout %d ms)", timeout_ms);
+  // read-only, direct from the ESP-IDF Bluetooth stack: does it actually
+  // think it's enabled at this point? (controller status: 0=idle 1=inited
+  // 2=enabled; bluedroid status: 0=uninitialized 1=initialized 2=enabled -
+  // esp_bt_gap_start_discovery() needs both at their "enabled" value)
+  ESP_LOGI(TAG, "bt controller_status=%d bluedroid_status=%d", static_cast<int>(esp_bt_controller_get_status()),
+           static_cast<int>(esp_bluedroid_get_status()));
   uint32_t scan_start = millis();
   BTScanResults *devices = this->serial_bt_.discover(timeout_ms);
   uint32_t elapsed = millis() - scan_start;
