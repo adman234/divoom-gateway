@@ -78,3 +78,14 @@ async def to_code(config):
         add_idf_sdkconfig_option("CONFIG_BLUEDROID_ENABLED", True)
         add_idf_sdkconfig_option("CONFIG_BT_CLASSIC_ENABLED", True)
         add_idf_sdkconfig_option("CONFIG_BT_SPP_ENABLED", True)
+
+        # Separate, lower-level Kconfig layer: the BT *controller's* own mode
+        # selection (as opposed to the Bluedroid *host*-level flags above).
+        # This is a Kconfig "choice" - its default is BLE_ONLY, which is
+        # incompatible with requesting ESP_BT_MODE_CLASSIC_BT at runtime and
+        # was confirmed (via a diagnostic build) to make
+        # esp_bt_controller_enable() fail with ESP_ERR_INVALID_ARG. Select
+        # BR/EDR (Classic) only, matching disableBLE=true in begin().
+        add_idf_sdkconfig_option("CONFIG_BTDM_CTRL_MODE_BR_EDR_ONLY", True)
+        add_idf_sdkconfig_option("CONFIG_BTDM_CTRL_MODE_BLE_ONLY", False)
+        add_idf_sdkconfig_option("CONFIG_BTDM_CTRL_MODE_BTDM", False)
