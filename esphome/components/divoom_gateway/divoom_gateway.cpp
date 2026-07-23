@@ -143,22 +143,34 @@ void DivoomGatewayComponent::bt_task_() {
 }
 
 void DivoomGatewayComponent::bt_discover_(int timeout_ms) {
-  ESP_LOGD(TAG, "starting Bluetooth discovery scan");
+  ESP_LOGD(TAG, "starting Bluetooth discovery scan (requested timeout %d ms)", timeout_ms);
+  uint32_t scan_start = millis();
   BTScanResults *devices = this->serial_bt_.discover(timeout_ms);
+  uint32_t elapsed = millis() - scan_start;
   if (devices == nullptr) {
     // matches the standalone firmware: some esp32-arduino Bluedroid versions
     // fail to re-arm discovery after a connection without a full restart
-    ESP_LOGW(TAG, "Bluetooth discovery returned no results, restarting");
+    ESP_LOGW(TAG, "Bluetooth discovery returned no results after %u ms, restarting", elapsed);
     ESP.restart();
     return;
   }
+  if (elapsed < static_cast<uint32_t>(timeout_ms) / 2) {
+    // a real inquiry scan should take close to the full requested duration;
+    // returning much sooner usually means the scan bailed out/failed rather
+    // than actually finding nothing
+    ESP_LOGW(TAG, "discover() returned after only %u ms (requested %d ms) - scan likely failed rather than "
+                  "finding nothing",
+             elapsed, timeout_ms);
+  }
 
   this->discovered_.clear();
+  ESP_LOGD(TAG, "raw scan results: %d device(s)", devices->getCount());
   for (int i = 0; i < devices->getCount(); i++) {
     BTAdvertisedDevice *device = devices->getDevice(i);
 
     bool supported = device->haveName();
     std::string name = device->haveName() ? device->getName() : "Unknown";
+    ESP_LOGD(TAG, "  [%d] %s (%s)", i, device->getAddress().toString().c_str(), name.c_str());
     if (name.find("Aurabox") == std::string::npos && name.find("AuraBox") == std::string::npos &&
         name.find("Timebox") == std::string::npos && name.find("TimeBox") == std::string::npos &&
         name.find("Ditoo") == std::string::npos && name.find("Pixoo") == std::string::npos &&
@@ -181,8 +193,8 @@ void DivoomGatewayComponent::bt_discover_(int timeout_ms) {
   }
 
   this->serial_bt_.discoverClear();
-  ESP_LOGD(TAG, "Bluetooth discovery scan finished: %d device(s) seen, %u kept", devices->getCount(),
-           static_cast<unsigned>(this->discovered_.size()));
+  ESP_LOGD(TAG, "Bluetooth discovery scan finished in %u ms: %d device(s) seen, %u kept", elapsed,
+           devices->getCount(), static_cast<unsigned>(this->discovered_.size()));
 }
 
 bool DivoomGatewayComponent::bt_connect_(const uint8_t address[6], uint16_t channel) {
