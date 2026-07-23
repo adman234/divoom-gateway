@@ -9,6 +9,7 @@
 #include <fcntl.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <arpa/inet.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -394,8 +395,14 @@ void DivoomGatewayComponent::tcp_socket_task_() {
 }
 
 void DivoomGatewayComponent::tcp_accept_client_() {
-  int fd = accept(this->tcp_listen_fd_, nullptr, nullptr);
+  sockaddr_in peer{};
+  socklen_t peer_len = sizeof(peer);
+  int fd = accept(this->tcp_listen_fd_, reinterpret_cast<sockaddr *>(&peer), &peer_len);
   if (fd < 0) return;
+
+  char peer_ip[INET_ADDRSTRLEN] = "?";
+  inet_ntop(AF_INET, &peer.sin_addr, peer_ip, sizeof(peer_ip));
+  ESP_LOGI(TAG, "TCP client connected from %s:%u", peer_ip, ntohs(peer.sin_port));
 
   int flags = fcntl(fd, F_GETFL, 0);
   fcntl(fd, F_SETFL, flags | O_NONBLOCK);
@@ -410,6 +417,7 @@ void DivoomGatewayComponent::tcp_accept_client_() {
   if (index < 0) {
     // all slots full: evict the oldest connection to make room, matching
     // the standalone firmware's fallback behavior
+    ESP_LOGW(TAG, "all %u TCP client slots full, evicting the oldest", TCP_MAX_CLIENTS);
     this->tcp_close_client_(0);
     index = 0;
   }
@@ -419,6 +427,7 @@ void DivoomGatewayComponent::tcp_accept_client_() {
 
 void DivoomGatewayComponent::tcp_close_client_(size_t index) {
   if (this->tcp_client_fds_[index] < 0) return;
+  ESP_LOGI(TAG, "TCP client slot %u closed", static_cast<unsigned>(index));
   close(this->tcp_client_fds_[index]);
   this->tcp_client_fds_[index] = -1;
 }
@@ -503,11 +512,17 @@ void DivoomGatewayComponent::tcp_parse_(const uint8_t *buffer, size_t size) {
   // connect statement: 0x69 + 6-byte MAC [+ port]
   if (buffer[0] == 0x69 && size >= 7 && size <= 8) {
     uint16_t port = size > 7 ? buffer[7] : 1;
-    this->bt_connect_(buffer + 1, port);
+    char mac_str[18];
+    snprintf(mac_str, sizeof(mac_str), "%02X:%02X:%02X:%02X:%02X:%02X", buffer[1], buffer[2], buffer[3], buffer[4],
+             buffer[5], buffer[6]);
+    ESP_LOGI(TAG, "TCP client requested Bluetooth connect to %s port %u", mac_str, port);
+    bool ok = this->bt_connect_(buffer + 1, port);
+    ESP_LOGI(TAG, "Bluetooth connect to %s: %s", mac_str, ok ? "OK" : "FAILED");
   }
 
   // disconnect statement: 0x96 + 6-byte MAC
   if (buffer[0] == 0x96 && size == 7) {
+    ESP_LOGI(TAG, "TCP client requested Bluetooth disconnect");
     this->bt_disconnect_();
   }
 
@@ -515,9 +530,11 @@ void DivoomGatewayComponent::tcp_parse_(const uint8_t *buffer, size_t size) {
   if (buffer[0] == 0x01 && buffer[size - 1] == 0x02) {
     int result = this->bt_send_(buffer, size);
     if (result == 0) {  // still connecting
+      ESP_LOGD(TAG, "raw payload (%u bytes) dropped: Bluetooth still connecting", static_cast<unsigned>(size));
       const uint8_t data[1] = {0x69};
       this->backward_(data, 1);
     } else if (result == -1) {  // no connection
+      ESP_LOGD(TAG, "raw payload (%u bytes) dropped: no Bluetooth connection", static_cast<unsigned>(size));
       const uint8_t data[1] = {0x96};
       this->backward_(data, 1);
     }
