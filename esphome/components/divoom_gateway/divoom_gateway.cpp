@@ -54,7 +54,11 @@ void DivoomGatewayComponent::setup() {
   // default (false) requests BTDM (Classic+BLE dual mode) - a likely
   // contributor to esp_bt_gap_start_discovery() failing instantly every
   // time (see bt_discover_'s 0ms-return diagnostic).
-  if (!this->serial_bt_.begin(App.get_name().c_str(), true, true)) {
+  bool bt_begin_ok = this->serial_bt_.begin(App.get_name().c_str(), true, true);
+  ESP_LOGI(TAG, "serial_bt_.begin() returned %s; controller_status=%d bluedroid_status=%d immediately after",
+           bt_begin_ok ? "true" : "false", static_cast<int>(esp_bt_controller_get_status()),
+           static_cast<int>(esp_bluedroid_get_status()));
+  if (!bt_begin_ok) {
     ESP_LOGE(TAG, "BluetoothSerial.begin() failed - Bluetooth Classic will not work");
   }
   this->serial_bt_.setTimeout(1000);
