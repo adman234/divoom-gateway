@@ -41,16 +41,12 @@ class DivoomGatewayComponent : public Component {
   void setup() override;
   void loop() override;
   void dump_config() override;
-  // controller_status/bluedroid_status were both observed stuck at 0 (never
-  // initialized) despite begin() reporting success - the standalone
-  // firmware's own main.cpp initializes Bluetooth *before* WiFi
-  // (BluetoothHandler::setup() then WifiHandler::setup()), but this
-  // component was running at AFTER_WIFI, the opposite order. ESP32's WiFi
-  // and Bluetooth Classic share one radio, and BT controller init failing
-  // silently when it runs after WiFi's already up is consistent with what
-  // was observed. setup_priority::BLUETOOTH runs before WIFI, matching the
-  // original ordering.
-  float get_setup_priority() const override { return setup_priority::BLUETOOTH; }
+  // REVERTED: setup_priority::BLUETOOTH (runs before WIFI) made the device
+  // unreachable over WiFi/API/web_server entirely - worse than the BT
+  // controller/bluedroid status-0 problem it was meant to fix. Back to
+  // AFTER_WIFI while that's investigated with serial/USB access instead of
+  // guessing again over a network connection the change itself breaks.
+  float get_setup_priority() const override { return setup_priority::AFTER_WIFI; }
 
   void set_tcp_port(uint16_t port) { this->tcp_port_ = port; }
   void set_bluetooth_filter(bool filter) { this->bluetooth_filter_ = filter; }
