@@ -32,6 +32,16 @@ static bool wifi_is_connected() {
 
 static const char *const TAG = "divoom_gateway";
 
+// A 7.5s Bluetooth Classic inquiry scan is heavy radio activity that shares
+// hardware with WiFi. At the original 15s interval that's a 50% duty cycle,
+// which was observed coinciding with TCP connections to the gateway (and
+// even the ESPHome API) failing to establish - the standalone firmware only
+// ever needed to satisfy its own web UI, not a low-latency control channel,
+// so it never had to care about this. Scanning far less often trades slower
+// (re)discovery of new devices for the gateway actually being reachable
+// while Home Assistant is trying to send it a command.
+static const uint32_t BT_DISCOVER_INTERVAL_MS = 60000;
+
 // packet-framing chunk size for the animation-frame splitting below - a
 // protocol-level constant (ties to the Divoom "set animation frame" command
 // size), unrelated to CONFIG_LWIP_TCP_MSS which only bounds one raw TCP read
@@ -106,10 +116,10 @@ void DivoomGatewayComponent::setup() {
 }
 
 void DivoomGatewayComponent::loop() {
-  // unmissable heartbeat, throttled to the same 15s cadence as the scan
-  // trigger below - confirms loop() is even being called and what gate it's
-  // hitting, regardless of how deep any actual Bluetooth call gets
-  bool due = millis() - this->bt_discover_timer_ > 15000;
+  // unmissable heartbeat every 15s regardless of the (much less frequent)
+  // scan interval below - confirms loop() is even being called and what
+  // gate it's hitting, regardless of how deep any actual Bluetooth call gets
+  bool due = millis() - this->bt_discover_timer_ > BT_DISCOVER_INTERVAL_MS;
   static uint32_t last_heartbeat = 0;
   if (millis() - last_heartbeat > 15000) {
     last_heartbeat = millis();
