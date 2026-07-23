@@ -15,9 +15,18 @@
 
 #include "esphome/core/application.h"
 #include "esphome/core/log.h"
+#include "esphome/components/wifi/wifi_component.h"
 
 namespace esphome {
 namespace divoom_gateway {
+
+// The Arduino WiFi.status() API isn't reliably kept in sync with ESPHome's
+// own wifi: component under the Arduino-as-ESP-IDF-component build mode - it
+// reported disconnected indefinitely even while wifi:'s own dump_config
+// showed "Connected: YES". Ask ESPHome's wifi component directly instead.
+static bool wifi_is_connected() {
+  return wifi::global_wifi_component != nullptr && wifi::global_wifi_component->is_connected();
+}
 
 static const char *const TAG = "divoom_gateway";
 
@@ -77,7 +86,7 @@ void DivoomGatewayComponent::loop() {
   if (millis() - last_heartbeat > 15000) {
     last_heartbeat = millis();
     ESP_LOGI(TAG, "loop() heartbeat: wifi_connected=%s bt_connected=%s bt_connecting=%s scan_due=%s",
-             WiFi.status() == WL_CONNECTED ? "YES" : "NO", this->bt_connected_ ? "YES" : "NO",
+             wifi_is_connected() ? "YES" : "NO", this->bt_connected_ ? "YES" : "NO",
              this->bt_connecting_ ? "YES" : "NO", due ? "YES" : "NO");
   }
 
@@ -87,8 +96,10 @@ void DivoomGatewayComponent::loop() {
   // since that firmware's own WiFi handler tore the AP down on connect - but
   // ESPHome's ap:/captive_portal: fallback commonly stays up in parallel
   // (WIFI_MODE_APSTA) even after joining, so that check would never clear
-  // here and Bluetooth discovery would never run at all).
-  if (WiFi.status() != WL_CONNECTED) return;
+  // here and Bluetooth discovery would never run at all). Uses ESPHome's own
+  // wifi: component state, not Arduino's WiFi.status(), which was observed
+  // stuck reporting disconnected indefinitely under this build mode.
+  if (!wifi_is_connected()) return;
 
   if (due) {
     this->bt_discover_timer_ = millis();
