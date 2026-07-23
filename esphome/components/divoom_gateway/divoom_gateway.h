@@ -95,6 +95,13 @@ class DivoomGatewayComponent : public Component {
   // which has proven reliably visible in every log capture so far, to settle
   // for certain whether setup() ever actually runs
   bool setup_ran_{false};
+  // logs emitted during setup() itself never reach the network log viewer
+  // (no API/log-streaming connection exists that early in boot yet) - so
+  // capture begin()'s result here and report it from loop()'s heartbeat
+  // instead, which has reliably shown up every time.
+  bool bt_begin_ok_{false};
+  int bt_begin_controller_status_{-1};
+  int bt_begin_bluedroid_status_{-1};
 
   BluetoothSerial serial_bt_;
   bool bt_connected_{false};

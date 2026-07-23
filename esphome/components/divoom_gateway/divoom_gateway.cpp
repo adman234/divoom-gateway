@@ -55,9 +55,10 @@ void DivoomGatewayComponent::setup() {
   // contributor to esp_bt_gap_start_discovery() failing instantly every
   // time (see bt_discover_'s 0ms-return diagnostic).
   bool bt_begin_ok = this->serial_bt_.begin(App.get_name().c_str(), true, true);
-  ESP_LOGI(TAG, "serial_bt_.begin() returned %s; controller_status=%d bluedroid_status=%d immediately after",
-           bt_begin_ok ? "true" : "false", static_cast<int>(esp_bt_controller_get_status()),
-           static_cast<int>(esp_bluedroid_get_status()));
+  // stored, not logged here - see the comment on these fields in the header
+  this->bt_begin_ok_ = bt_begin_ok;
+  this->bt_begin_controller_status_ = static_cast<int>(esp_bt_controller_get_status());
+  this->bt_begin_bluedroid_status_ = static_cast<int>(esp_bluedroid_get_status());
   if (!bt_begin_ok) {
     ESP_LOGE(TAG, "BluetoothSerial.begin() failed - Bluetooth Classic will not work");
   }
@@ -96,9 +97,12 @@ void DivoomGatewayComponent::loop() {
   static uint32_t last_heartbeat = 0;
   if (millis() - last_heartbeat > 15000) {
     last_heartbeat = millis();
-    ESP_LOGI(TAG, "loop() heartbeat: wifi_connected=%s bt_connected=%s bt_connecting=%s scan_due=%s",
+    ESP_LOGI(TAG,
+             "loop() heartbeat: wifi_connected=%s bt_connected=%s bt_connecting=%s scan_due=%s | at setup(): "
+             "begin_ok=%s controller_status=%d bluedroid_status=%d",
              wifi_is_connected() ? "YES" : "NO", this->bt_connected_ ? "YES" : "NO",
-             this->bt_connecting_ ? "YES" : "NO", due ? "YES" : "NO");
+             this->bt_connecting_ ? "YES" : "NO", due ? "YES" : "NO", this->bt_begin_ok_ ? "YES" : "NO",
+             this->bt_begin_controller_status_, this->bt_begin_bluedroid_status_);
   }
 
   // Bluetooth inquiry and WiFi scanning share one radio: back off until WiFi
