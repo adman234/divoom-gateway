@@ -135,7 +135,7 @@ class Divoom:
                 self.connect()
                 time.sleep(0.5)
 
-            if skipPing != True:
+            if skipPing != True and self.socket != None:
                 ping = self.send_ping()
                 if (self.host != None and not isinstance(ping, int) and list(ping)[-1] == 0x69):
                     time.sleep(0.5)
