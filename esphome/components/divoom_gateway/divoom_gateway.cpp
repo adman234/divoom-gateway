@@ -35,6 +35,7 @@ DivoomGatewayComponent::DivoomGatewayComponent() {
 }
 
 void DivoomGatewayComponent::setup() {
+  this->setup_ran_ = true;
   ESP_LOGI(TAG, "setup() starting");
 
   if (!this->serial_bt_.begin(App.get_name().c_str(), true)) {
@@ -106,6 +107,8 @@ void DivoomGatewayComponent::dump_config() {
   ESP_LOGCONFIG(TAG, "  TCP port: %u", this->tcp_port_);
   ESP_LOGCONFIG(TAG, "  Bluetooth name filter: %s", this->bluetooth_filter_ ? "YES" : "NO");
   ESP_LOGCONFIG(TAG, "  Bluetooth PIN: %s", this->pin_.empty() ? "(none)" : "(set)");
+  ESP_LOGCONFIG(TAG, "  DIAGNOSTIC BUILD MARKER 2026-07-22c: setup() ran = %s, component failed = %s",
+                this->setup_ran_ ? "YES" : "NO", this->is_failed() ? "YES" : "NO");
 }
 
 // --- Bluetooth Classic (SPP) ---

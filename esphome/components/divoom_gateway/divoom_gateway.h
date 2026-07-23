@@ -86,6 +86,10 @@ class DivoomGatewayComponent : public Component {
   uint16_t tcp_port_{7777};
   bool bluetooth_filter_{true};
   std::string pin_{};
+  // set as the very first statement in setup(); read back in dump_config(),
+  // which has proven reliably visible in every log capture so far, to settle
+  // for certain whether setup() ever actually runs
+  bool setup_ran_{false};
 
   BluetoothSerial serial_bt_;
   bool bt_connected_{false};
