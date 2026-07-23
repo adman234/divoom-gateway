@@ -102,6 +102,14 @@ class DivoomGatewayComponent : public Component {
   bool bt_begin_ok_{false};
   int bt_begin_controller_status_{-1};
   int bt_begin_bluedroid_status_{-1};
+  // raw per-step esp_err_t from manually driving controller/bluedroid init
+  // ourselves, bypassing BluetoothSerial::begin()'s wrapper, since it just
+  // reports a bare false with no indication of which step actually failed.
+  // -999 = step not reached.
+  int err_controller_init_{-999};
+  int err_controller_enable_{-999};
+  int err_bluedroid_init_{-999};
+  int err_bluedroid_enable_{-999};
 
   BluetoothSerial serial_bt_;
   bool bt_connected_{false};

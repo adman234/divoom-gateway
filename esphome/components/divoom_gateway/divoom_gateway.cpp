@@ -49,6 +49,22 @@ void DivoomGatewayComponent::setup() {
   this->setup_ran_ = true;
   ESP_LOGI(TAG, "setup() starting");
 
+  // Diagnostic: begin_ok has been observed false on every boot, with no
+  // indication of *which* underlying step fails. Drive the same sequence
+  // BluetoothSerial::begin() does ourselves first, capturing each step's
+  // exact esp_err_t, before falling through to the real begin() call below.
+  esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
+  this->err_controller_init_ = esp_bt_controller_init(&bt_cfg);
+  if (this->err_controller_init_ == ESP_OK) {
+    this->err_controller_enable_ = esp_bt_controller_enable(ESP_BT_MODE_CLASSIC_BT);
+  }
+  if (this->err_controller_enable_ == ESP_OK) {
+    this->err_bluedroid_init_ = esp_bluedroid_init();
+  }
+  if (this->err_bluedroid_init_ == ESP_OK) {
+    this->err_bluedroid_enable_ = esp_bluedroid_enable();
+  }
+
   // disableBLE=true: we only ever enabled Classic-BT sdkconfig options
   // (CONFIG_BT_CLASSIC_ENABLED/CONFIG_BT_SPP_ENABLED, no BLE ones), but the
   // default (false) requests BTDM (Classic+BLE dual mode) - a likely
@@ -99,10 +115,12 @@ void DivoomGatewayComponent::loop() {
     last_heartbeat = millis();
     ESP_LOGI(TAG,
              "loop() heartbeat: wifi_connected=%s bt_connected=%s bt_connecting=%s scan_due=%s | at setup(): "
-             "begin_ok=%s controller_status=%d bluedroid_status=%d",
+             "begin_ok=%s controller_status=%d bluedroid_status=%d | err_controller_init=%d "
+             "err_controller_enable=%d err_bluedroid_init=%d err_bluedroid_enable=%d",
              wifi_is_connected() ? "YES" : "NO", this->bt_connected_ ? "YES" : "NO",
              this->bt_connecting_ ? "YES" : "NO", due ? "YES" : "NO", this->bt_begin_ok_ ? "YES" : "NO",
-             this->bt_begin_controller_status_, this->bt_begin_bluedroid_status_);
+             this->bt_begin_controller_status_, this->bt_begin_bluedroid_status_, this->err_controller_init_,
+             this->err_controller_enable_, this->err_bluedroid_init_, this->err_bluedroid_enable_);
   }
 
   // Bluetooth inquiry and WiFi scanning share one radio: back off until WiFi
