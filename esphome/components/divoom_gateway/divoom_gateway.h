@@ -44,8 +44,11 @@ class DivoomGatewayComponent : public Component {
   // REVERTED: setup_priority::BLUETOOTH (runs before WIFI) made the device
   // unreachable over WiFi/API/web_server entirely - worse than the BT
   // controller/bluedroid status-0 problem it was meant to fix. Back to
-  // AFTER_WIFI while that's investigated with serial/USB access instead of
-  // guessing again over a network connection the change itself breaks.
+  // AFTER_WIFI, which despite the name is just the generic "after the
+  // network interface component" tier - ESPHome's WIFI and ETHERNET
+  // priorities are the same value (250), so this runs after ethernet: here
+  // exactly like it ran after wifi: before. Not touching this value again
+  // without hardware to verify against - see the regression this caused.
   float get_setup_priority() const override { return setup_priority::AFTER_WIFI; }
 
   void set_tcp_port(uint16_t port) { this->tcp_port_ = port; }

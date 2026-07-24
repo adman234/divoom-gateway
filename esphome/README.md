@@ -1,15 +1,35 @@
-# Divoom Gateway - ESPHome external component (experimental)
+# Divoom Gateway - ESPHome external component
 
 This is an alternative to the standalone firmware in [`firmware/`](../firmware) built as an
 [ESPHome external component](https://esphome.io/components/external_components.html) instead
-of a bespoke PlatformIO/Arduino project. It replaces WiFi management, OTA, logging, the web UI
-and WiFi provisioning with ESPHome's own components, and keeps only the part ESPHome can't do
-for you: talking Bluetooth Classic SPP to the Divoom device and relaying it over TCP.
+of a bespoke PlatformIO/Arduino project. It replaces network management, OTA, logging, the web
+UI and (on the original WiFi target) WiFi provisioning with ESPHome's own components, and keeps
+only the part ESPHome can't do for you: talking Bluetooth Classic SPP to the Divoom device and
+relaying it over TCP.
 
-**Status: experimental, not yet flashed/tested on real hardware.** The component compiles
-against ESPHome's schema, but the Bluetooth Classic / WiFi radio coexistence behavior (the
-class of bug that led to the `WiFi.setSleep(false)` boot-loop fix in `firmware/`) can only be
-found by testing on a real board. Expect to flash it, see what breaks, and iterate.
+**Status: confirmed working on real hardware** (Bluetooth Classic discovery/connect, verified
+against a Divoom Ditoo) **on the original WiFi-based `esp32dev` target.** This branch has since
+been retargeted to Ethernet+PoE hardware (see below) to eliminate WiFi/Bluetooth radio
+coexistence entirely - that retarget compiles but is not yet flash-tested on the actual Ethernet
+board.
+
+## Why Ethernet instead of WiFi
+
+The WiFi build worked, but WiFi and Bluetooth Classic share one radio on the ESP32, and getting
+them to coexist took real tuning: a Bluetooth discovery scan running too often/too long
+noticeably increased the odds of TCP connections to the gateway (including the ESPHome API
+itself) intermittently failing to establish. That's fixable on WiFi (scan-interval tuning got it
+to a reasonably low duty cycle), but a wired board sidesteps the problem entirely - Ethernet
+doesn't touch the radio Bluetooth Classic uses at all. This branch now targets an
+**Olimex ESP32-POE / ESP32-POE-ISO** (Ethernet + PoE, built around the same original ESP32 chip
+this whole project depends on for Bluetooth Classic - see Requirements). The Bluetooth-discovery
+scan interval was reverted back to the standalone firmware's original 15s cadence accordingly,
+since there's no coexistence cost to worry about anymore.
+
+Boards that only add Ethernet over SPI (e.g. a XIAO ESP32-S3 + W5500 adapter) are **not** an
+alternative here, however tempting for their small size/cost: the S3 (like S2/C3/C6) has no
+Bluetooth Classic radio at all, only BLE - a hardware limitation no firmware change can work
+around.
 
 ## What this does and doesn't include
 
@@ -37,7 +57,13 @@ need them):
 
 ## Requirements
 
-- An original dual-core **ESP32** (not S2/S3/C3/C6 - those don't have Bluetooth Classic)
+- **Olimex ESP32-POE-ISO** (default in `divoom-gateway.yaml`) or **ESP32-POE** (non-isolated;
+  change `esp32: board:` to `esp32-poe`) - both use the original dual-core ESP32
+  (ESP32-WROOM-32(E)/WROVER), which is required for Bluetooth Classic. Not S2/S3/C3/C6, and not
+  any board whose Ethernet is bolted on over SPI (W5500) rather than built around this chip.
+- Check which module variant is actually on your board: the WROVER variant of these Olimex
+  boards uses **GPIO0** for the Ethernet clock pin instead of **GPIO17** - the `ethernet:` block
+  in `divoom-gateway.yaml` defaults to GPIO17 (WROOM); change it if your link doesn't come up.
 - `esp32: framework: type: arduino` - `BluetoothSerial` is Arduino-only, not available under
   esp-idf
 
@@ -50,9 +76,9 @@ esphome run divoom-gateway.yaml
 ```
 
 First flash needs a USB cable. After that, `ota:` is enabled, so subsequent
-`esphome run divoom-gateway.yaml` / `esphome upload` calls can go over WiFi. Initial WiFi
-provisioning (if you don't want to hardcode credentials in `secrets.yaml` on first boot) works
-the same way as ESP Web Tools did with the standalone firmware, via `improv_serial:`.
+`esphome run divoom-gateway.yaml` / `esphome upload` calls can go over the network. There's no
+WiFi credential to provision on this Ethernet target - just plug in the cable and it gets an
+address via DHCP (use `ethernet: manual_ip:` in the YAML if you want a static one instead).
 
 ## Known deviations from `firmware/`
 
@@ -75,12 +101,15 @@ the same way as ESP Web Tools did with the standalone firmware, via `improv_seri
   with no clamp. The port clamps to the buffer size. Same fix applied to the TCP-receive path
   (clamped to the packet struct's buffer size before the `memcpy`).
 - No PSRAM-aware allocation for TCP receive buffers (`MALLOC`/`ps_malloc` in the original) -
-  plain heap `malloc` is used, since the base `esp32dev` board this targets has no PSRAM.
-- Verification here (no network access to install `esphome` in this sandbox) has been limited
-  to Python/YAML syntax checks, a manual declared-vs-defined method cross-check, and
-  brace-balance checks - not a real `esphome compile`. Real builds so far have caught three
-  things those checks couldn't (see Troubleshooting below) - all fixed, but this is still
-  unflashed, so treat it as still likely to have another rough edge or two.
+  plain heap `malloc` is used. The Olimex ESP32-POE-ISO's WROOM module has no PSRAM either
+  (the WROVER variant does, but nothing here takes advantage of it).
+- The WiFi target went through many real build/flash cycles to reach a working state (see
+  Troubleshooting) - each of those fixes carries over here since they're all in shared code
+  (Bluetooth Classic init, the TCP relay, sdkconfig). The Ethernet-specific change itself
+  (dropping `wifi:`/`ap:`/`captive_portal:`/`improv_serial:` for `ethernet:`, and the
+  `network_is_connected()` rename) has only been verified by static checks in this sandbox (no
+  network access here to run `esphome compile`), not a real build - expect at least one round of
+  Ethernet-specific fixes once it's actually flashed.
 
 ## Troubleshooting
 

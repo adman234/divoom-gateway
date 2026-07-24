@@ -9,7 +9,7 @@ except ImportError:
     add_idf_sdkconfig_option = None
 
 CODEOWNERS = ["@adman234"]
-DEPENDENCIES = ["wifi", "mdns"]
+DEPENDENCIES = ["ethernet", "mdns"]
 
 divoom_gateway_ns = cg.esphome_ns.namespace("divoom_gateway")
 DivoomGatewayComponent = divoom_gateway_ns.class_("DivoomGatewayComponent", cg.Component)
@@ -59,8 +59,9 @@ async def to_code(config):
     # builds (arduino-as-an-esp-idf-component); anything we #include that
     # lives under arduino-esp32/libraries/* has to be re-enabled explicitly,
     # or its headers aren't on the include path. (No AsyncTCP dependency here
-    # - the TCP relay is plain BSD/lwIP sockets, see divoom_gateway.cpp.)
-    cg.add_library("WiFi", None)
+    # - the TCP relay is plain BSD/lwIP sockets, see divoom_gateway.cpp. No
+    # Arduino WiFi library either - network status is queried through
+    # ESPHome's own ethernet: component directly, not an Arduino network class.)
     cg.add_library("ESPmDNS", None)
     cg.add_library("BluetoothSerial", None)
 

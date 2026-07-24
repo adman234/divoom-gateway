@@ -3,11 +3,14 @@ esphome:
   friendly_name: Divoom Gateway
 
 esp32:
-  board: esp32dev
+  # Olimex ESP32-POE-ISO (galvanically isolated Ethernet+PoE). For the
+  # non-isolated ESP32-POE, use board: esp32-poe instead.
+  board: esp32-poe-iso
   framework:
     # BluetoothSerial (Bluetooth Classic / SPP) is only available under the
     # Arduino framework, not esp-idf. Bluetooth Classic itself only exists on
-    # the original dual-core ESP32 - not S2/S3/C3/C6.
+    # the original dual-core ESP32 - not S2/S3/C3/C6, so this rules out the
+    # Ethernet-over-SPI (W5500) XIAO-style boards, which use those chips.
     type: arduino
 
 external_components:
@@ -28,19 +31,22 @@ api:
 ota:
   - platform: esphome
     password: !secret ota_password
-improv_serial:
 mdns:
 web_server:
   port: 80
 
-wifi:
-  ssid: !secret wifi_ssid
-  password: !secret wifi_password
-  ap:
-    ssid: "Divoom Gateway Fallback"
-    password: !secret ap_password
-
-captive_portal:
+# Olimex ESP32-POE / ESP32-POE-ISO pinout (LAN8720 PHY over RMII). The WROVER
+# variant of these boards moves the clock pin to GPIO0 instead of GPIO17 -
+# check which module is on your board if link doesn't come up.
+ethernet:
+  type: LAN8720
+  mdc_pin: GPIO23
+  mdio_pin: GPIO18
+  clk:
+    pin: GPIO17
+    mode: CLK_OUT
+  phy_addr: 0
+  power_pin: GPIO12
 
 divoom_gateway:
   id: gateway

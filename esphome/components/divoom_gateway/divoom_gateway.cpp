@@ -1,7 +1,6 @@
 #include "divoom_gateway.h"
 
 #include <Arduino.h>
-#include <WiFi.h>
 #include <esp_task_wdt.h>
 #include <esp_bt.h>
 #include <esp_bt_main.h>
@@ -18,30 +17,27 @@
 
 #include "esphome/core/application.h"
 #include "esphome/core/log.h"
-#include "esphome/components/wifi/wifi_component.h"
+#include "esphome/components/ethernet/ethernet_component.h"
 
 namespace esphome {
 namespace divoom_gateway {
 
-// The Arduino WiFi.status() API isn't reliably kept in sync with ESPHome's
-// own wifi: component under the Arduino-as-ESP-IDF-component build mode - it
-// reported disconnected indefinitely even while wifi:'s own dump_config
-// showed "Connected: YES". Ask ESPHome's wifi component directly instead.
-static bool wifi_is_connected() {
-  return wifi::global_wifi_component != nullptr && wifi::global_wifi_component->is_connected();
+// Mirrors the WiFi build's wifi::global_wifi_component->is_connected() check
+// (kept there because Arduino's WiFi.status() wasn't reliable under this
+// build mode - untested whether ethernet has the same quirk, but querying
+// ESPHome's own component directly costs nothing and sidesteps the question).
+static bool network_is_connected() {
+  return ethernet::global_eth_component != nullptr && ethernet::global_eth_component->is_connected();
 }
 
 static const char *const TAG = "divoom_gateway";
 
-// A 7.5s Bluetooth Classic inquiry scan is heavy radio activity that shares
-// hardware with WiFi. At the original 15s interval that's a 50% duty cycle,
-// which was observed coinciding with TCP connections to the gateway (and
-// even the ESPHome API) failing to establish - the standalone firmware only
-// ever needed to satisfy its own web UI, not a low-latency control channel,
-// so it never had to care about this. Scanning far less often trades slower
-// (re)discovery of new devices for the gateway actually being reachable
-// while Home Assistant is trying to send it a command.
-static const uint32_t BT_DISCOVER_INTERVAL_MS = 60000;
+// On the WiFi build, a 7.5s Bluetooth Classic inquiry scan shared radio
+// hardware with WiFi and coincided with TCP/API connections failing, which
+// is why this was stretched out to 60s there. Ethernet doesn't share any
+// hardware with Bluetooth Classic, so that constraint doesn't apply here -
+// back to the standalone firmware's original, more responsive interval.
+static const uint32_t BT_DISCOVER_INTERVAL_MS = 15000;
 
 // packet-framing chunk size for the animation-frame splitting below - a
 // protocol-level constant (ties to the Divoom "set animation frame" command
@@ -125,25 +121,19 @@ void DivoomGatewayComponent::loop() {
   if (millis() - last_heartbeat > 15000) {
     last_heartbeat = millis();
     ESP_LOGI(TAG,
-             "loop() heartbeat: wifi_connected=%s bt_connected=%s bt_connecting=%s scan_due=%s | at setup(): "
+             "loop() heartbeat: eth_connected=%s bt_connected=%s bt_connecting=%s scan_due=%s | at setup(): "
              "begin_ok=%s controller_status=%d bluedroid_status=%d | err_controller_init=%d "
              "err_controller_enable=%d err_bluedroid_init=%d err_bluedroid_enable=%d",
-             wifi_is_connected() ? "YES" : "NO", this->bt_connected_ ? "YES" : "NO",
+             network_is_connected() ? "YES" : "NO", this->bt_connected_ ? "YES" : "NO",
              this->bt_connecting_ ? "YES" : "NO", due ? "YES" : "NO", this->bt_begin_ok_ ? "YES" : "NO",
              this->bt_begin_controller_status_, this->bt_begin_bluedroid_status_, this->err_controller_init_,
              this->err_controller_enable_, this->err_bluedroid_init_, this->err_bluedroid_enable_);
   }
 
-  // Bluetooth inquiry and WiFi scanning share one radio: back off until WiFi
-  // has actually joined a network, mirroring the standalone firmware's
-  // coexistence workaround (there, checking "is our AP up" was equivalent,
-  // since that firmware's own WiFi handler tore the AP down on connect - but
-  // ESPHome's ap:/captive_portal: fallback commonly stays up in parallel
-  // (WIFI_MODE_APSTA) even after joining, so that check would never clear
-  // here and Bluetooth discovery would never run at all). Uses ESPHome's own
-  // wifi: component state, not Arduino's WiFi.status(), which was observed
-  // stuck reporting disconnected indefinitely under this build mode.
-  if (!wifi_is_connected()) return;
+  // Just wait for the network to be up before doing anything that publishes
+  // over it (mDNS TXT records) - unlike the WiFi build, there's no radio to
+  // share with Bluetooth here, so this isn't a coexistence workaround anymore.
+  if (!network_is_connected()) return;
 
   if (due) {
     this->bt_discover_timer_ = millis();
