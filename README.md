@@ -1,5 +1,21 @@
 # Divoom Gateway
 
+> [!IMPORTANT]
+> **The Home Assistant integration has moved to
+> [adman234/divoom-pi](https://github.com/adman234/divoom-pi).**
+>
+> Install it from there instead: in HACS, remove this repository and add
+> `https://github.com/adman234/divoom-pi` as a custom repository of type *Integration*. Both provide
+> the `divoom` domain, so having both added will collide. Your existing device survives the swap —
+> the config entry is keyed by domain and MAC, not by which repository the code came from.
+>
+> divoom-pi also ships a Raspberry Pi gateway, which does the same job as the ESP32 firmware here
+> without a compile-and-flash cycle. The copy of `custom_components/divoom` in this repository still
+> works but is no longer where changes are made.
+>
+> **This repository remains the home of the ESP32 and ESPHome gateway firmware**
+> ([`firmware/`](firmware), [`flasher/`](flasher), and the `esphome` branch).
+
 **Control Divoom pixel-art devices (Pixoo, Ditoo, Timebox, Tivoo, …) from Home Assistant — as real devices with entities and actions, over Bluetooth or through a web-flashable ESP32 gateway.**
 
 This repo combines and extends two projects by [@d03n3rfr1tz3](https://github.com/d03n3rfr1tz3):
