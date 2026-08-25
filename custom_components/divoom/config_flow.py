@@ -30,6 +30,23 @@ from .hub import clean_host
 
 _LOGGER = logging.getLogger(__package__)
 
+
+def _device_type_options() -> list[SelectOptionDict]:
+    """The selectable Divoom device types, shared by the setup and reconfigure steps."""
+    return [
+        SelectOptionDict(value="aurabox", label="Aurabox"),
+        SelectOptionDict(value="backpack", label="Backpack"),
+        SelectOptionDict(value="ditoo", label="Ditoo"),
+        SelectOptionDict(value="ditoomic", label="Ditoo Mic"),
+        SelectOptionDict(value="pixoo", label="Pixoo"),
+        SelectOptionDict(value="pixoomax", label="Pixoo Max"),
+        SelectOptionDict(value="timebox", label="Timebox"),
+        SelectOptionDict(value="timeboxmini", label="Timebox Mini"),
+        SelectOptionDict(value="timoo", label="Timoo"),
+        SelectOptionDict(value="tivoo", label="Tivoo"),
+    ]
+
+
 @config_entries.HANDLERS.register(DOMAIN)
 class DivoomBluetoothConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Divoom Bluetooth config flow."""
@@ -137,7 +154,24 @@ class DivoomBluetoothConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._device_mac = device_mac.lower()
         self._device_name = discovery_info.properties.get("device_name") or "Device"
 
-        await self.async_set_unique_id(self._device_mac)
+        existing = await self.async_set_unique_id(self._device_mac)
+
+        # A gateway announcing a Divoom that is already configured used to be
+        # a plain abort, which left an entry created through Bluetooth
+        # discovery stuck talking to the Home Assistant host's own Bluetooth
+        # adapter forever - the gateway was on the network, announcing itself,
+        # and nothing ever picked it up. If the existing entry has no host,
+        # adopt the one that just announced itself and reload the entry.
+        # An entry that already names a gateway is left alone.
+        updates = None
+        if existing is not None and not existing.data.get(CONF_HOST):
+            updates = {CONF_HOST: self._device_host}
+            _LOGGER.info(
+                "Divoom: adopting gateway %s for already configured device %s",
+                self._device_host, self._device_mac,
+            )
+        self._abort_if_unique_id_configured(updates=updates)
+
         await self.async_check_uniqueness()
 
         self.context["title_placeholders"] = {
@@ -218,18 +252,7 @@ class DivoomBluetoothConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             device_type = "tivoo"
         self._device_type = device_type
 
-        device_types = [
-            SelectOptionDict(value="aurabox", label="Aurabox"),
-            SelectOptionDict(value="backpack", label="Backpack"),
-            SelectOptionDict(value="ditoo", label="Ditoo"),
-            SelectOptionDict(value="ditoomic", label="Ditoo Mic"),
-            SelectOptionDict(value="pixoo", label="Pixoo"),
-            SelectOptionDict(value="pixoomax", label="Pixoo Max"),
-            SelectOptionDict(value="timebox", label="Timebox"),
-            SelectOptionDict(value="timeboxmini", label="Timebox Mini"),
-            SelectOptionDict(value="timoo", label="Timoo"),
-            SelectOptionDict(value="tivoo", label="Tivoo"),
-        ]
+        device_types = _device_type_options()
         return self.async_show_form(
             step_id="device_type",
             data_schema=vol.Schema(
@@ -270,6 +293,62 @@ class DivoomBluetoothConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             step_id="confirm",
         )
     
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Change the gateway host, port or device type of an existing entry.
+
+        Without this there is no way to see - let alone correct - which
+        transport an entry uses. An entry created through Bluetooth discovery
+        has no host and therefore talks to the Home Assistant host's own
+        Bluetooth adapter, and the only remedy used to be deleting the entry
+        and adding it again, losing its entity IDs and any automations.
+        """
+
+        entry = self.hass.config_entries.async_get_entry(self.context["entry_id"])
+        if entry is None:
+            return self.async_abort(reason="unknown_entry")
+
+        if user_input is not None:
+            data = dict(entry.data)
+            data[CONF_HOST] = clean_host(user_input.get(CONF_HOST))
+            data[CONF_PORT] = user_input.get(CONF_PORT, data.get(CONF_PORT) or 1)
+            data[CONF_DEVICE_TYPE] = user_input.get(CONF_DEVICE_TYPE, data.get(CONF_DEVICE_TYPE))
+
+            _LOGGER.debug(
+                "Divoom: reconfigured {} ({}) to use {}".format(
+                    entry.title, data.get(CONF_MAC),
+                    "gateway {}".format(data[CONF_HOST]) if data[CONF_HOST]
+                    else "direct Bluetooth",
+                )
+            )
+            return self.async_update_reload_and_abort(entry, data=data)
+
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(CONF_HOST, default=entry.data.get(CONF_HOST) or ""): cv.string,
+                    vol.Optional(CONF_PORT, default=entry.data.get(CONF_PORT) or 1): cv.port,
+                    vol.Required(
+                        CONF_DEVICE_TYPE, default=entry.data.get(CONF_DEVICE_TYPE)
+                    ): SelectSelector(
+                        SelectSelectorConfig(
+                            mode=SelectSelectorMode.DROPDOWN,
+                            options=_device_type_options(),
+                            custom_value=False,
+                            multiple=False,
+                            sort=True,
+                        ),
+                    ),
+                }
+            ),
+            description_placeholders={
+                "mac": entry.data.get(CONF_MAC) or "",
+                "current": entry.data.get(CONF_HOST) or "direct Bluetooth",
+            },
+        )
+
     async def async_check_uniqueness(self) -> bool:
         self._abort_if_unique_id_configured()
         self._async_abort_entries_match({ CONF_MAC: self._device_mac, CONF_HOST: self._device_host })
