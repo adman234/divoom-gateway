@@ -151,9 +151,16 @@ class Divoom:
             if error.errno == errno.EPIPE:
                 self.socket_errno = error.errno
 
+        # Any non-zero errno is a failure. This used to test "> 0", which
+        # silently ignored socket.gaierror: a hostname that does not resolve
+        # raises it with a *negative* errno (-2 EAI_NONAME), so a mistyped or
+        # unresolvable gateway host skipped the retry loop, logged nothing at
+        # all, and left send_payload() returning early on a None socket. The
+        # symptom was a device that accepted every command and did nothing,
+        # with not one line in the log.
         retries = 1
-        while self.socket_errno != None and self.socket_errno > 0 and retries <= 5:
-            self.logger.warning("{0}: connection lost (errno = {1}). Trying to reconnect for the {2} time.".format(self.type, self.socket_errno, retries))
+        while self.socket_errno != None and self.socket_errno != 0 and retries <= 5:
+            self.logger.warning("{0}: connection to {1} lost (errno = {2}). Trying to reconnect for the {3} time.".format(self.type, self.host or self.mac, self.socket_errno, retries))
             if retries > 1:
                 time.sleep(1 * retries)
 
@@ -161,8 +168,8 @@ class Divoom:
             self.connect()
             retries += 1
 
-        if self.socket_errno != None and self.socket_errno > 0:
-            self.logger.error("{0}: giving up after {2} attempts (errno = {1}).".format(self.type, self.socket_errno, retries - 1))
+        if self.socket_errno != None and self.socket_errno != 0:
+            self.logger.error("{0}: giving up on {1} after {3} attempts (errno = {2}). If this is a gateway hostname, check that it resolves - try its IP address, or add .local".format(self.type, self.host or self.mac, self.socket_errno, retries - 1))
 
     def receive(self, num_bytes=1024):
         """Receive n bytes of data from the Divoom device and put it in the input buffer. Returns the number of bytes received."""
